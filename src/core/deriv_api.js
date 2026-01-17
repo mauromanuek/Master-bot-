@@ -10,7 +10,7 @@ const DerivAPI = {
     connect(token, callback) {
         if (this.socket) this.socket.close();
         
-        this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
+        this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
 
         this.socket.onopen = () => {
             this.socket.send(JSON.stringify({ authorize: token }));
