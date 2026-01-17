@@ -9,29 +9,32 @@ const AutoModule = {
         return `
             <div class="space-y-4 max-w-md mx-auto">
                 <div class="flex justify-between items-center">
-                    <h2 class="text-xl font-bold text-purple-500 italic uppercase">Auto Scalper Pro</h2>
+                    <div>
+                        <h2 class="text-xl font-bold text-purple-500 italic uppercase leading-none">Auto Scalper Pro</h2>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">IA-Driven Engine</span>
+                    </div>
                     <div id="a-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm"></div>
                 </div>
                 
-                <div class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded-xl border border-gray-800">
+                <div class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded-xl border border-gray-800 shadow-lg">
                     <div>
                         <label class="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Stake ($)</label>
-                        <input id="a-stake" type="number" value="10.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-purple-500">
+                        <input id="a-stake" type="number" value="10.00" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-purple-500 transition-colors">
                     </div>
                     <div>
                         <label class="text-[9px] text-green-500 font-bold uppercase tracking-wider">Take Profit</label>
-                        <input id="a-tp" type="number" value="5" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500">
+                        <input id="a-tp" type="number" value="5" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
                     </div>
                     <div>
                         <label class="text-[9px] text-red-500 font-bold uppercase tracking-wider">Stop Loss</label>
-                        <input id="a-sl" type="number" value="10" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-red-500">
+                        <input id="a-sl" type="number" value="10" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-red-500 transition-colors">
                     </div>
                 </div>
 
-                <button id="btn-a-toggle" onclick="AutoModule.toggle()" class="w-full py-4 bg-purple-600 hover:bg-purple-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95">Iniciar Robô</button>
+                <button id="btn-a-toggle" onclick="AutoModule.toggle()" class="w-full py-4 bg-purple-600 hover:bg-purple-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Robô</button>
                 
                 <div id="a-status" class="bg-black p-3 rounded-xl h-40 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> Sistema pronto. Aguardando comando...</p>
+                    <p class="text-gray-600 italic">> [SISTEMA] Aguardando comando para o ativo ${app.currentAsset}...</p>
                 </div>
                 
                 <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 flex justify-between items-center shadow-xl">
@@ -66,7 +69,7 @@ const AutoModule = {
             btn.classList.replace('bg-purple-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-purple-500');
             indicator.classList.add('animate-pulse');
-            this.log("MODO AUTOMÁTICO ATIVADO", "text-purple-400 font-bold");
+            this.log(`MODO AUTOMÁTICO ATIVADO EM ${app.currentAsset}`, "text-purple-400 font-bold");
             this.setupListener(); 
             this.runCycle();
         } else {
@@ -80,7 +83,7 @@ const AutoModule = {
     },
 
     setupListener() {
-        // Remove listener antigo para evitar execuções duplicadas
+        // Remove listener antigo para evitar execuções duplicadas e vazamento de memória
         if (this._handler) document.removeEventListener('contract_finished', this._handler);
         this._handler = (e) => {
             if (e.detail.prefix === 'a') {
@@ -94,25 +97,27 @@ const AutoModule = {
         // Bloqueia se já estiver operando ou se o robô estiver desligado
         if (!this.isRunning || this.isTrading) return;
 
-        // Verifica limites de lucro/perda antes de analisar
+        // Verifica limites de Stop Loss e Take Profit
         if (this.checkLimits()) return;
 
-        this.log("ANALISANDO MERCADO (GROQ AI)...", "text-blue-400");
+        const targetAsset = app.currentAsset;
+        this.log(`ANALISANDO ${targetAsset} (Llama 3.3)...`, "text-blue-400");
         
         try {
+            // Obtém veredito do Analista Geral (que já está sincronizado com o Ativo Global)
             const veredito = await app.analista.obterVereditoCompleto();
             
             if (!this.isRunning) return;
 
-            // Filtro de Confiança Calibrado para Scalping (55%)
+            // Filtro de Confiança Calibrado para Scalping (Mínimo 55%)
             if ((veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
                 
                 const stake = document.getElementById('a-stake').value;
-                this.log(`IA DETECTOU: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
-                this.log(`MOTIVO: ${veredito.motivo}`, "text-gray-500 text-[9px]");
+                this.log(`SINAL IA: ${veredito.direcao} (${veredito.confianca}%) NO ATIVO ${targetAsset}`, "text-green-500 font-bold");
 
                 this.isTrading = true;
                 
+                // Realiza a compra via DerivAPI garantindo o prefixo 'a' para lucro automático
                 DerivAPI.buy(veredito.direcao, stake, 'a', (res) => {
                     if (res.error) {
                         this.log(`ERRO NA COMPRA: ${res.error.message}`, "text-red-500");
@@ -121,24 +126,22 @@ const AutoModule = {
                     }
                 });
             } else {
-                // Intervalo curto entre análises para não perder oportunidades rápidas
-                const reason = veredito.direcao === "WAIT" || veredito.direcao === "NEUTRAL" ? "MERCADO NEUTRO" : `SINAL FRACO (${veredito.confianca}%)`;
-                this.log(`${reason}. REAVALIANDO EM 3S...`, "text-gray-600");
+                this.log(`SINAL FRACO OU NEUTRO (${veredito.confianca}%). REAVALIANDO...`, "text-gray-600 italic");
                 setTimeout(() => this.runCycle(), 3000);
             }
 
         } catch (e) {
-            this.log("IA OFFLINE - ATIVANDO MODO TÉCNICO LOCAL", "text-orange-500");
+            this.log("CONEXÃO IA INSTÁVEL - FALLBACK TÉCNICO", "text-orange-500");
             const local = app.analista.calcularIndicadoresLocais();
             
             let direcao = "WAIT";
-            // Lógica técnica agressiva para fallback híbrido
-            if (local.isMartelo || (local.tendenciaDow === "ALTA" && local.rsi < 65)) direcao = "CALL";
-            else if (local.rsi > 75) direcao = "PUT";
+            // Lógica técnica agressiva para fallback local
+            if (local.isMartelo || (local.tendenciaDow === "ALTA" && local.rsi < 60)) direcao = "CALL";
+            else if (local.rsi > 70) direcao = "PUT";
 
-            if (direcao !== "WAIT") {
+            if (direcao !== "WAIT" && this.isRunning) {
                 this.isTrading = true;
-                this.log(`ENTRADA LOCAL: ${direcao} (RSI: ${local.rsi})`, "text-orange-400");
+                this.log(`ENTRADA TÉCNICA EM ${targetAsset}: ${direcao} (RSI: ${local.rsi})`, "text-orange-400");
                 DerivAPI.buy(direcao, document.getElementById('a-stake').value, 'a', (res) => {
                     if (res.error) { 
                         this.isTrading = false; 
@@ -146,7 +149,6 @@ const AutoModule = {
                     }
                 });
             } else {
-                this.log("AGUARDANDO CONDIÇÕES TÉCNICAS LOCAIS...", "text-gray-600");
                 setTimeout(() => this.runCycle(), 3000);
             }
         }
@@ -162,9 +164,9 @@ const AutoModule = {
         this.updateUI(profit);
 
         if (this.isRunning) {
-            // Ciclo ultra-rápido: Apenas 1 segundo após o término para buscar a próxima entrada
-            this.log("BUSCANDO PRÓXIMA ENTRADA...", "text-gray-500");
-            setTimeout(() => this.runCycle(), 1000);
+            // Ciclo de alta frequência: 1.5s após o término para nova análise
+            this.log(`ORDEM FINALIZADA EM ${app.currentAsset}: ${profit > 0 ? 'WIN' : 'LOSS'}`, "text-gray-500");
+            setTimeout(() => this.runCycle(), 1500);
         }
     },
 
@@ -177,12 +179,12 @@ const AutoModule = {
         const sl = parseFloat(slInput.value);
 
         if (this.currentProfit >= tp) {
-            this.log("META ATINGIDA! DESLIGANDO...", "text-green-500 font-black");
+            this.log(`META DE LUCRO (${tp} USD) ATINGIDA!`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
         if (this.currentProfit <= (sl * -1)) {
-            this.log("STOP LOSS ATINGIDO! REAVALIE A ESTRATÉGIA.", "text-red-500 font-black");
+            this.log(`LIMITE DE PERDA (-${sl} USD) ATINGIDO!`, "text-red-500 font-black");
             this.toggle();
             return true;
         }
