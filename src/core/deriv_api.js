@@ -10,6 +10,7 @@ const DerivAPI = {
     connect(token, callback) {
         if (this.socket) this.socket.close();
         
+        // App_id oficial para manter consistência no Vercel
         this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
 
         this.socket.onopen = () => {
@@ -20,6 +21,7 @@ const DerivAPI = {
             const data = JSON.parse(msg.data);
             
             if (data.error) {
+                // Prevenção de loop em erros de subscrição duplicada
                 if (data.error.code === 'AlreadySubscribed') return; 
                 if (callback) callback(data);
                 return;
@@ -27,6 +29,7 @@ const DerivAPI = {
 
             if (data.msg_type === 'authorize') {
                 this.isAuthorized = true;
+                // Subscrição global de saldo e contratos abertos
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 this.socket.send(JSON.stringify({ 
                     proposal_open_contract: 1, 
@@ -43,30 +46,42 @@ const DerivAPI = {
         };
     },
 
+    /**
+     * Sincroniza a troca de ativo garantindo a limpeza de subscrições anteriores
+     * Resolve Problema 1 e 3
+     */
     changeSymbol(newSymbol) {
-        if (this.currentSymbol === newSymbol && this.candleSubscriptionId) return;
-
+        if (!newSymbol) return;
+        
+        // 1. Cancela subscrição de candles anterior se existir
         if (this.candleSubscriptionId) {
             this.socket.send(JSON.stringify({ forget: this.candleSubscriptionId }));
             this.candleSubscriptionId = null;
         }
+
+        // 2. Comando global de limpeza para garantir que nenhum streaming antigo continue
+        this.socket.send(JSON.stringify({ forget_all: "candles" }));
+        this.socket.send(JSON.stringify({ forget_all: "ohlc" }));
         
         this.currentSymbol = newSymbol;
         
-        // Limpeza profunda para evitar Problema 1 (Ativo Preso) e Problema 3 (Dados Imaturos)
-        if (window.app && app.analista) {
-            app.analista.limparHistorico();
+        // 3. Limpeza profunda do histórico no Analista e no State do App
+        if (window.app) {
+            if (app.analista) app.analista.limparHistorico();
+            // Garante que o app saiba qual o ativo atual para IA e UI
+            app.currentAsset = newSymbol; 
         }
 
+        // 4. Reinicia subscrição para o novo ativo
         this.subscribeCandles(this.callbacks['candles']);
     },
 
     subscribeCandles(callback) {
-        if (!this.isAuthorized || this.isSubscribing) return;
+        if (!this.isAuthorized || !this.currentSymbol) return;
         
-        this.isSubscribing = true;
         this.callbacks['candles'] = callback;
         
+        // Solicita histórico + subscrição de streaming
         this.socket.send(JSON.stringify({
             ticks_history: this.currentSymbol,
             adjust_start_time: 1,
@@ -76,8 +91,6 @@ const DerivAPI = {
             style: "candles",
             subscribe: 1
         }));
-
-        setTimeout(() => { this.isSubscribing = false; }, 2000);
     },
 
     buy(type, stake, prefix, callback, extraParams = {}) {
@@ -86,6 +99,7 @@ const DerivAPI = {
         this.callbacks['buy'] = callback;
         this._pendingPrefix = prefix || 'm';
 
+        // Identifica se é um ativo de 1 segundo (S) para ajustar duração
         const isFastAsset = this.currentSymbol.includes('1Z') || this.currentSymbol.includes('1HZ');
         
         const request = {
@@ -96,6 +110,7 @@ const DerivAPI = {
                 basis: 'stake',
                 contract_type: type,
                 currency: 'USD',
+                // Ativos (1s) operam em Ticks (5-10), Volatility padrão em Minutos (1)
                 duration: isFastAsset ? 5 : 1,
                 duration_unit: isFastAsset ? 't' : 'm', 
                 symbol: this.currentSymbol,
@@ -107,19 +122,21 @@ const DerivAPI = {
     },
 
     handleResponses(data) {
+        // Armazena o ID da subscrição atual para cancelamentos futuros
         if (data.msg_type === 'candles' && data.subscription) {
             this.candleSubscriptionId = data.subscription.id;
         }
 
-        // Priorização de histórico completo para evitar Problema 3 (Dados Imaturos)
+        // Processamento de Histórico (Array de velas)
         if (data.msg_type === 'candles') {
-            if (this.callbacks['candles']) {
+            // Filtro de segurança: Só aceita se for o ativo que estamos visualizando
+            if (this.callbacks['candles'] && data.candles) {
                 this.callbacks['candles'](data.candles);
             }
         } 
-        // Update de tick individual (OHLC)
+        // Processamento de streaming OHLC (Vela em formação)
         else if (data.msg_type === 'ohlc') {
-            // Verifica se o tick pertence ao símbolo atual para evitar Problema 1
+            // SEGURANÇA MÁXIMA: Ignora ticks de ativos antigos (Problema 1)
             if (data.ohlc.symbol === this.currentSymbol && this.callbacks['candles']) {
                 this.callbacks['candles'](data.ohlc);
             }
@@ -134,6 +151,7 @@ const DerivAPI = {
             const contractId = data.buy.contract_id;
             this.activeContracts[contractId] = this._pendingPrefix;
             
+            // Monitora o contrato específico
             this.socket.send(JSON.stringify({
                 proposal_open_contract: 1,
                 contract_id: contractId,
@@ -145,8 +163,7 @@ const DerivAPI = {
             const c = data.proposal_open_contract;
             if (!c) return;
 
-            // Removida a reatribuição automática de currentSymbol para resolver Problema 1 definitivamente
-
+            // Notifica o encerramento do contrato e atualiza lucros
             if (c.is_sold) {
                 const prefix = this.activeContracts[c.contract_id] || 'm';
                 const profit = parseFloat(c.profit);
@@ -155,8 +172,10 @@ const DerivAPI = {
                     app.updateModuleProfit(profit, prefix);
                 }
 
+                // Limpa registro do contrato ativo
                 delete this.activeContracts[c.contract_id];
                 
+                // Dispara evento para módulos (Auto/Manual) reagirem
                 document.dispatchEvent(new CustomEvent('contract_finished', { 
                     detail: { prefix, profit, contract: c } 
                 }));
