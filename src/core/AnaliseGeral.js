@@ -1,7 +1,7 @@
 class AnaliseGeral {
     constructor(backendUrl) {
-        // Define a rota do backend no Render
-        this.backendUrl = backendUrl || "https://mauro-paulo-starps-previus-2.onrender.com/analisar";
+        // Define a rota do backend atualizada para a Vercel
+        this.backendUrl = backendUrl || "https://master-bot-beta.vercel.app/analisar";
         this.historicoVelas = [];
     }
 
@@ -15,13 +15,42 @@ class AnaliseGeral {
 
     adicionarDados(velas) {
         // Garante que as velas recebidas da Deriv API sejam armazenadas corretamente
-        // Se receber um array, substitui; se receber um objeto único (tick), gerenciar conforme necessário
-        this.historicoVelas = Array.isArray(velas) ? velas : [...this.historicoVelas, velas].slice(-100);
+        // Se receber um array (histórico inicial), substitui; se receber um objeto único (tick/ohlc), adiciona ao array
+        if (Array.isArray(velas)) {
+            this.historicoVelas = velas.map(v => ({
+                open: parseFloat(v.open),
+                high: parseFloat(v.high),
+                low: parseFloat(v.low),
+                close: parseFloat(v.close),
+                epoch: v.epoch
+            }));
+        } else if (velas && typeof velas === 'object') {
+            const novaVela = {
+                open: parseFloat(velas.open),
+                high: parseFloat(velas.high),
+                low: parseFloat(velas.low),
+                close: parseFloat(velas.close),
+                epoch: velas.epoch
+            };
+            
+            // Evita duplicatas pelo timestamp (epoch)
+            if (this.historicoVelas.length === 0 || this.historicoVelas[this.historicoVelas.length - 1].epoch !== novaVela.epoch) {
+                this.historicoVelas.push(novaVela);
+            } else {
+                // Se for o mesmo epoch, apenas atualiza a vela atual (formato OHLC da Deriv)
+                this.historicoVelas[this.historicoVelas.length - 1] = novaVela;
+            }
+        }
+        
+        // Mantém apenas as últimas 100 velas para não sobrecarregar a memória
+        if (this.historicoVelas.length > 100) {
+            this.historicoVelas = this.historicoVelas.slice(-100);
+        }
     }
 
     calcularIndicadoresLocais() {
-        // Precisamos de pelo menos 10 velas para uma análise de força confiável
-        if (!this.historicoVelas || this.historicoVelas.length < 10) {
+        // Precisamos de pelo menos 14 velas para uma análise de RSI e tendência confiável
+        if (!this.historicoVelas || this.historicoVelas.length < 14) {
             return { tendenciaDow: "NEUTRA", isMartelo: false, rsi: 50 };
         }
 
@@ -33,7 +62,6 @@ class AnaliseGeral {
         const tendenciaDow = atual.close > anterior.close ? "ALTA" : "BAIXA";
 
         // 2. Price Action: Padrão Martelo (Reversão de Fundo)
-        [attachment_0](attachment)
         // Corrigido para identificar rejeição real de preço na sombra inferior
         const corpo = Math.abs(atual.open - atual.close);
         const precoMinimoCorpo = Math.min(atual.open, atual.close);
@@ -45,9 +73,9 @@ class AnaliseGeral {
         // 3. RSI Real (Relative Strength Index) - Período 14
         let ganhos = 0;
         let perdas = 0;
-        const periodoRSI = Math.min(v.length - 1, 14);
         
-        for (let i = v.length - periodoRSI; i < v.length; i++) {
+        for (let i = v.length - 14; i < v.length; i++) {
+            if (!v[i-1]) continue;
             const diferenca = v[i].close - v[i-1].close;
             if (diferenca >= 0) ganhos += diferenca;
             else perdas += Math.abs(diferenca);
@@ -68,8 +96,8 @@ class AnaliseGeral {
         const assetName = document.getElementById('current-asset-name')?.innerText || "Ativo Desconhecido";
         
         // Prepara o conjunto de dados OHLC para o Llama 3.3
-        // Enviar os preços reais (O, H, L, C) permite que a IA identifique suportes e resistências
-        const priceActionData = this.historicoVelas.slice(-15).map(v => ({
+        // Enviar os últimos 20 candles para análise de momentum
+        const priceActionData = this.historicoVelas.slice(-20).map(v => ({
             o: v.open,
             h: v.high,
             l: v.low,
@@ -92,6 +120,11 @@ class AnaliseGeral {
 
     async chamarGroq(payload) {
         try {
+            // Verifica se há dados antes de enviar para evitar resposta "NEUTRO" por falta de informação
+            if (!payload.indicadores.ohlc_history || payload.indicadores.ohlc_history.length < 5) {
+                throw new Error("Dados insuficientes para análise");
+            }
+
             const response = await fetch(this.backendUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -100,7 +133,7 @@ class AnaliseGeral {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.erro || "Falha no Render");
+                throw new Error(errorData.erro || "Falha no Servidor Vercel");
             }
 
             const data = await response.json();
@@ -120,20 +153,20 @@ class AnaliseGeral {
             }
 
         } catch (e) {
-            console.warn("IA indisponível, usando lógica técnica local...");
+            console.warn("IA indisponível ou dados incompletos, usando lógica técnica local...", e.message);
             
-            // FALLBACK: Se o Render/IA falhar, o bot não para, ele usa análise técnica pura
+            // FALLBACK: Se a Vercel/IA falhar ou houver erro de parsing, o bot usa análise técnica pura
             const ind = this.calcularIndicadoresLocais();
-            let direcao = "WAIT";
+            let direcao = "NEUTRO";
             
             // Lógica Oportunista Híbrida de Fallback (Resolve Problema 4)
-            if (ind.rsi < 35 || ind.isMartelo) direcao = "CALL";
-            else if (ind.rsi > 65) direcao = "PUT";
+            if (ind.rsi < 30 || ind.isMartelo) direcao = "CALL";
+            else if (ind.rsi > 70) direcao = "PUT";
 
             return {
                 direcao: direcao,
-                confianca: 55,
-                motivo: "Baseado em RSI e Price Action Local (Modo de Segurança Ativo)"
+                confianca: 50,
+                motivo: "Baseado em RSI e Price Action Local (Modo de Segurança)"
             };
         }
     }
