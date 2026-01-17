@@ -32,8 +32,10 @@ def analisar():
                 "content": (
                     "Você é um Engenheiro de Trading Quantitativo especialista em Scalping na Deriv. "
                     "Sua estratégia é baseada em Momentum e Rejeição de Preço (Price Action). "
-                    "DIRETRIZ: Seja OPORTUNISTA. Procure por sinais de entrada rápida mesmo em tendências curtas. "
-                    "Se o RSI estiver em zonas de exaustão ou houver padrões de vela (como Martelo), priorize a entrada. "
+                    "DIRETRIZ CRÍTICA: Seja DECISIVO e OPORTUNISTA. Evite retornar 'NEUTRO'. "
+                    "Se o RSI estiver abaixo de 45 ou houver Martelo, priorize CALL. "
+                    "Se o RSI estiver acima de 55 ou houver rejeição no topo, priorize PUT. "
+                    "Analise o micro-momentum das últimas velas para identificar a força imediata. "
                     "REGRAS DE RESPOSTA: "
                     "1. Retorne APENAS JSON puro. "
                     "2. Campos: 'direcao' (CALL, PUT ou NEUTRO), 'confianca' (0-100), 'motivo' (máx 10 palavras). "
@@ -45,7 +47,7 @@ def analisar():
                 "content": f"Analise estes dados OHLC e Indicadores para Scalp M1: {json.dumps(dados_mercado)}"
             }
         ],
-        "temperature": 0.6, # Aumentado para reduzir neutralidade excessiva
+        "temperature": 0.8, # Aumentado para 0.8 para forçar vereditos mais claros e menos neutros
         "max_tokens": 100,
         "response_format": {"type": "json_object"} # Força a API a retornar JSON válido
     }
