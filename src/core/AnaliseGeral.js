@@ -2,7 +2,7 @@ class AnaliseGeral {
     constructor(backendUrl) {
         this.backendUrl = backendUrl || "https://master-bot-beta.vercel.app/analisar";
         this.historicoVelas = [];
-        this.ultimosTicks = []; // Nova lista para Ticks brutos
+        this.ultimosTicks = [];
         this._analisando = false;
     }
 
@@ -10,20 +10,31 @@ class AnaliseGeral {
         this.historicoVelas = [];
         this.ultimosTicks = [];
         this._analisando = false;
+        console.log("Memória limpa para novo ciclo.");
     }
 
     adicionarDados(velas, tickBruto = null) {
-        // 1. Processa Velas (OHLC)
-        if (Array.isArray(velas)) {
-            this.historicoVelas = velas.map(v => ({
-                o: parseFloat(v.open), h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close)
-            }));
-        }
-
-        // 2. Processa Ticks em tempo real (para sentir a pressão de compra/venda)
+        // 1. Processamento de Ticks em Tempo Real (Velocidade do preço)
         if (tickBruto) {
             this.ultimosTicks.push(parseFloat(tickBruto));
             if (this.ultimosTicks.length > 20) this.ultimosTicks.shift();
+        }
+
+        // 2. Processamento de Velas OHLC
+        if (Array.isArray(velas)) {
+            this.historicoVelas = velas.map(v => ({
+                o: parseFloat(v.open), h: parseFloat(v.high), l: parseFloat(v.low), c: parseFloat(v.close), e: v.epoch
+            }));
+        } else if (velas && typeof velas === 'object' && velas.e) {
+            const nova = { o: parseFloat(velas.o), h: parseFloat(velas.h), l: parseFloat(velas.l), c: parseFloat(velas.c), e: velas.e };
+            
+            if (this.historicoVelas.length > 0) {
+                const ultima = this.historicoVelas[this.historicoVelas.length - 1];
+                if (nova.e > ultima.e) this.historicoVelas.push(nova);
+                else if (nova.e === ultima.e) this.historicoVelas[this.historicoVelas.length - 1] = nova;
+            } else {
+                this.historicoVelas.push(nova);
+            }
         }
         
         if (this.historicoVelas.length > 50) this.historicoVelas.shift();
@@ -32,13 +43,15 @@ class AnaliseGeral {
     async obterVereditoCompleto() {
         if (this._analisando || this.historicoVelas.length < 10) return null;
 
-        // Preparamos o pacote de dados BRUTOS para a IA
+        const assetName = window.app ? app.currentAsset : "R_100";
+        
+        // Pacote de dados brutos para a IA decidir
         const payload = {
-            asset: window.app ? app.currentAsset : "R_100",
-            data_hora: new Date().toISOString(),
-            contexto_ohlc: this.historicoVelas.slice(-20), // Últimas 20 velas
-            fluxo_ticks: this.ultimosTicks, // Últimos 20 movimentos de preço
-            indicadores_sugeridos: this.calcularIndicadoresLocais() // Apenas como referência
+            asset: assetName,
+            fluxo_ticks: this.ultimosTicks,
+            contexto_velas: this.historicoVelas.slice(-15).map(v => ({
+                open: v.o.toFixed(5), close: v.c.toFixed(5), high: v.h.toFixed(5), low: v.l.toFixed(5)
+            }))
         };
 
         this._analisando = true;
@@ -48,34 +61,31 @@ class AnaliseGeral {
             return veredito;
         } catch (e) {
             this._analisando = false;
-            return { direcao: "NEUTRO", motivo: "Erro de conexão" };
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro na IA" };
         }
     }
 
     async chamarGroq(payload) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 12000);
+
         const response = await fetch(this.backendUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
         const data = await response.json();
         const resIA = JSON.parse(data.choices[0].message.content);
         
         return {
-            direcao: resIA.direcao.toUpperCase(),
-            confianca: resIA.confianca,
-            estratégia: resIA.estratégia,
-            motivo: resIA.motivo
-        };
-    }
-
-    calcularIndicadoresLocais() {
-        const v = this.historicoVelas;
-        const atual = v[v.length - 1];
-        const anterior = v[v.length - 2];
-        return {
-            rsi_estimado: 50, // O JS não precisa mais calcular com precisão, a IA fará isso
-            tendencia_imediata: atual.c > anterior.c ? "ALTA" : "BAIXA"
+            direcao: (resIA.direcao || "NEUTRO").toUpperCase(),
+            confianca: parseInt(resIA.confianca || 0),
+            estratégia: resIA.estratégia || "Análise de Fluxo",
+            motivo: resIA.motivo || "Decisão autônoma",
+            asset: payload.asset
         };
     }
 }
