@@ -89,28 +89,38 @@ const ManualModule = {
     },
 
     setupListener() {
-        if (this._handler) document.removeEventListener('contract_finished', this._handler);
+        // Remove handler antigo para não duplicar lucros/resultados
+        if (this._handler) {
+            document.removeEventListener('contract_finished', this._handler);
+        }
+        
         this._handler = (e) => {
-            if (e.detail.prefix === 'm') {
+            // Verifica se o resultado pertence a este módulo (m = manual)
+            if (e.detail && e.detail.prefix === 'm') {
                 this.handleContractResult(e.detail.profit);
             }
         };
+        
         document.addEventListener('contract_finished', this._handler);
     },
 
     async runCycle() {
+        // Bloqueia execução se inativo, trocando de aba ou já operando
         if (!this.isActive || this.isTrading) return;
 
+        // Verifica Meta e Stop antes de analisar
         if (this.checkLimits()) return;
 
         this.log(`IA ANALISANDO ${app.currentAsset}...`, "text-gray-500");
         this.resetButtons();
 
         try {
-            const veredito = await app.analista.obterVereditoCompleto();
+            // Força o analista a usar o ativo atual da UI (Resolve Problema 1)
+            const veredito = await app.analista.obterVereditoCompleto(app.currentAsset);
             
             if (!this.isActive || this.isTrading) return;
 
+            // Filtro de Confiança Profissional
             if ((veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
                 const side = veredito.direcao.toLowerCase();
                 const target = document.getElementById('btn-' + side);
@@ -120,14 +130,20 @@ const ManualModule = {
                     target.style.opacity = "1";
                     target.classList.add('animate-pulse');
                     this.log(`SINAL IA: ${veredito.direcao} (${veredito.confianca}%) - LIBERADO`, "text-green-500 font-bold");
+                    
+                    // Se o usuário não clicar em 15 segundos, o botão reseta para reanalisar
+                    setTimeout(() => {
+                        if(!this.isTrading && this.isActive) this.runCycle();
+                    }, 15000);
                 }
             } else {
-                this.log(`CONDIÇÃO NEUTRA (${veredito.confianca}%). REAVALIANDO...`, "text-gray-600");
-                setTimeout(() => this.runCycle(), 3000);
+                this.log(`CONDIÇÃO NEUTRA OU BAIXA CONFIANÇA (${veredito.confianca}%). REAVALIANDO...`, "text-gray-600");
+                setTimeout(() => this.runCycle(), 5000);
             }
         } catch (e) {
+            console.error("Erro no ciclo manual:", e);
             this.log("ERRO NA ANÁLISE. TENTANDO NOVAMENTE...", "text-red-400");
-            setTimeout(() => this.runCycle(), 5000);
+            setTimeout(() => this.runCycle(), 7000);
         }
     },
 
@@ -135,19 +151,21 @@ const ManualModule = {
         if (this.isTrading || !this.isActive) return;
 
         this.isTrading = true;
-        const stake = document.getElementById('m-stake').value;
+        const stakeInput = document.getElementById('m-stake');
+        const stake = stakeInput ? stakeInput.value : 10;
 
         this.log(`EXECUTANDO ${type} NO ATIVO ${app.currentAsset}`, "text-yellow-400 font-bold");
 
+        // Reseta botões imediatamente após o clique para evitar cliques duplos
+        this.resetButtons();
+
         DerivAPI.buy(type, stake, 'm', (res) => {
             if (res.error) {
-                this.log(`ERRO: ${res.error.message}`, "text-red-500");
+                this.log(`ERRO NA COMPRA: ${res.error.message}`, "text-red-500");
                 this.isTrading = false;
                 if (this.isActive) setTimeout(() => this.runCycle(), 3000);
             }
         });
-
-        this.resetButtons();
     },
 
     handleContractResult(profit) {
@@ -155,12 +173,21 @@ const ManualModule = {
         this.currentProfit += profit;
         
         this.stats.total++;
-        profit > 0 ? this.stats.wins++ : this.stats.losses++;
+        if (profit > 0) {
+            this.stats.wins++;
+        } else {
+            this.stats.losses++;
+        }
         
         this.updateUI(profit);
 
+        // Atualiza lucro global no objeto principal app
+        if (typeof app.updateModuleProfit === 'function') {
+            app.moduleProfits['m'] = this.currentProfit;
+        }
+
         if (this.isActive) {
-            this.log("PRONTO PARA NOVA ANÁLISE.", "text-blue-400");
+            this.log("AGUARDANDO 1.5s PARA NOVA ANÁLISE.", "text-blue-400");
             setTimeout(() => this.runCycle(), 1500);
         }
     },
@@ -174,12 +201,12 @@ const ManualModule = {
         const sl = parseFloat(slInput.value);
 
         if (this.currentProfit >= tp) {
-            this.log(`META DE LUCRO (${tp} USD) ALCANÇADA!`, "text-green-500 font-black");
+            this.log(`META DE LUCRO (${tp.toFixed(2)} USD) ALCANÇADA!`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
         if (this.currentProfit <= (sl * -1)) {
-            this.log(`STOP LOSS (-${sl} USD) ATINGIDO!`, "text-red-500 font-black");
+            this.log(`STOP LOSS (-${sl.toFixed(2)} USD) ATINGIDO!`, "text-red-500 font-black");
             this.toggle();
             return true;
         }
@@ -192,12 +219,15 @@ const ManualModule = {
         
         const profitEl = document.getElementById('m-val-profit');
         if (profitEl) {
-            profitEl.innerText = `${(this.currentProfit >= 0 ? '+' : '')}${this.currentProfit.toFixed(2)} USD`;
+            const prefix = this.currentProfit >= 0 ? '+' : '';
+            profitEl.innerText = `${prefix}${this.currentProfit.toFixed(2)} USD`;
             profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
         }
 
-        document.getElementById('m-stat-w').innerText = this.stats.wins;
-        document.getElementById('m-stat-l').innerText = this.stats.losses;
+        const winStat = document.getElementById('m-stat-w');
+        const lossStat = document.getElementById('m-stat-l');
+        if(winStat) winStat.innerText = this.stats.wins;
+        if(lossStat) lossStat.innerText = this.stats.losses;
     },
 
     resetButtons() {
