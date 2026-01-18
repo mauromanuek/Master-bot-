@@ -1,15 +1,10 @@
 class AnaliseGeral {
     constructor(backendUrl) {
-        // Define a rota do backend atualizada para a Vercel
         this.backendUrl = backendUrl || "https://master-bot-beta.vercel.app/analisar";
         this.historicoVelas = [];
-        this._analisando = false; // Lock de execução para evitar múltiplas chamadas simultâneas
+        this._analisando = false;
     }
 
-    /**
-     * Limpa o histórico de velas para evitar contaminação de dados
-     * entre ativos diferentes (Resolve Problema 1, 3 e 6)
-     */
     limparHistorico() {
         this.historicoVelas = [];
         this._analisando = false; 
@@ -17,9 +12,7 @@ class AnaliseGeral {
     }
 
     adicionarDados(velas) {
-        // Garante que as velas recebidas da Deriv API sejam armazenadas corretamente
         if (Array.isArray(velas)) {
-            // Carga inicial de histórico (count: 50)
             this.historicoVelas = velas.map(v => ({
                 open: parseFloat(v.open || 0),
                 high: parseFloat(v.high || 0),
@@ -28,7 +21,6 @@ class AnaliseGeral {
                 epoch: parseInt(v.epoch || 0)
             })).filter(v => v.epoch > 0);
         } else if (velas && typeof velas === 'object') {
-            // Processamento de Tick em Tempo Real (OHLC) - Normalização explícita
             const novaVela = {
                 open: parseFloat(velas.open || velas.o || 0),
                 high: parseFloat(velas.high || velas.h || 0),
@@ -44,23 +36,20 @@ class AnaliseGeral {
 
             const ultimaVela = this.historicoVelas[this.historicoVelas.length - 1];
 
-            // Se o epoch for maior, é uma nova vela de 1 minuto
             if (novaVela.epoch > ultimaVela.epoch) {
                 this.historicoVelas.push(novaVela);
             } else if (novaVela.epoch === ultimaVela.epoch) {
-                // Se for o mesmo epoch, atualiza a vela atual (formação do OHLC)
                 this.historicoVelas[this.historicoVelas.length - 1] = novaVela;
             }
         }
         
-        // Mantém buffer otimizado para análise de momentum e RSI
         if (this.historicoVelas.length > 100) {
             this.historicoVelas = this.historicoVelas.slice(-100);
         }
     }
 
     calcularIndicadoresLocais() {
-        // Precisamos de pelo menos 14 velas para RSI e Dow (Problema 4)
+        // Garantimos 15 velas para ter 14 variações de preço para o RSI
         if (!this.historicoVelas || this.historicoVelas.length < 15) {
             return { tendenciaDow: "NEUTRA", isMartelo: false, rsi: 50, pronto: false };
         }
@@ -69,19 +58,17 @@ class AnaliseGeral {
         const atual = v[v.length - 1];
         const anterior = v[v.length - 2];
 
-        // 1. Teoria de Dow
         const tendenciaDow = atual.close > anterior.close ? "ALTA" : "BAIXA";
 
-        // 2. Price Action: Martelo
+        // Identificação de Martelo (Candlestick Pattern)
         const corpo = Math.abs(atual.open - atual.close);
         const precoMinimoCorpo = Math.min(atual.open, atual.close);
         const sombraInferior = precoMinimoCorpo - atual.low;
         const isMartelo = sombraInferior > (corpo * 2) && corpo > 0;
 
-        // 3. RSI Real (Período 14)
+        // Cálculo do RSI (Relative Strength Index)
         let ganhos = 0;
         let perdas = 0;
-        // Começa em v.length - 14 para garantir i-1 válido
         for (let i = v.length - 14; i < v.length; i++) {
             const diff = v[i].close - v[i-1].close;
             if (diff >= 0) ganhos += diff;
@@ -99,23 +86,21 @@ class AnaliseGeral {
     }
 
     async obterVereditoCompleto(assetOverride = null) {
-        // Lock de proteção para evitar múltiplas chamadas (Problema: IA bloqueia o ciclo)
         if (this._analisando) return null;
 
         const indicadores = this.calcularIndicadoresLocais();
-        // Resolve contaminação: Usa assetOverride (Radar) ou o asset fixo do momento da chamada
         const assetName = assetOverride || (window.app ? app.currentAsset : "R_100");
         
         if (!indicadores.pronto) {
-            return {
-                direcao: "NEUTRO",
-                confianca: 0,
-                motivo: "Aguardando maturação (Mínimo 14 velas)"
-            };
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Carregando histórico..." };
         }
 
+        // Formatação dos dados OHLC para facilitar a leitura da IA (reduzindo casas decimais irrelevantes)
         const priceActionData = this.historicoVelas.slice(-15).map(v => ({
-            o: v.open, h: v.high, l: v.low, c: v.close
+            o: Number(v.open.toFixed(5)), 
+            h: Number(v.high.toFixed(5)), 
+            l: Number(v.low.toFixed(5)), 
+            c: Number(v.close.toFixed(5))
         }));
 
         const payload = {
@@ -135,13 +120,13 @@ class AnaliseGeral {
             return veredito;
         } catch (e) {
             this._analisando = false;
-            throw e;
+            // Fallback imediato em caso de erro na rede ou Vercel
+            return this.gerarVereditoFallback(indicadores);
         }
     }
 
     async chamarGroq(payload) {
         try {
-            // Timeout via AbortController para não travar o bot
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 12000);
 
@@ -153,32 +138,32 @@ class AnaliseGeral {
             });
 
             clearTimeout(timeoutId);
-
             if (!response.ok) throw new Error("Erro Vercel");
 
             const data = await response.json();
-            
-            // Adaptado para o novo formato simplificado do app.py corrigido
             const resIA = data.choices ? JSON.parse(data.choices[0].message.content) : data;
             
             return {
                 direcao: (resIA.direcao || "NEUTRO").toUpperCase(),
                 confianca: parseInt(resIA.confianca || 0),
                 motivo: resIA.motivo || "Análise concluída",
-                asset: payload.asset // Echo para conferência de segurança
+                asset: payload.asset
             };
 
         } catch (e) {
-            const ind = this.calcularIndicadoresLocais();
-            let direcao = "NEUTRO";
-            if (ind.rsi < 30) direcao = "CALL";
-            else if (ind.rsi > 70) direcao = "PUT";
-
-            return {
-                direcao: direcao,
-                confianca: 50,
-                motivo: "Fallback: Análise Técnica Local"
-            };
+            return this.gerarVereditoFallback(this.calcularIndicadoresLocais());
         }
+    }
+
+    gerarVereditoFallback(ind) {
+        let direcao = "NEUTRO";
+        if (ind.rsi < 30) direcao = "CALL";
+        else if (ind.rsi > 70) direcao = "PUT";
+
+        return {
+            direcao: direcao,
+            confianca: 51,
+            motivo: `Análise Técnica (RSI: ${ind.rsi})`
+        };
     }
 }
