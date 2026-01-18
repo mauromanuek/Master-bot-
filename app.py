@@ -32,6 +32,10 @@ def analisar():
     if not dados_mercado:
         return jsonify({"erro": "Nenhum dado de mercado recebido"}), 400
 
+    # Extração de contexto para evitar contaminação (Ajuste Cirúrgico)
+    asset_name = dados_mercado.get('asset', 'Ativo')
+    indicadores = dados_mercado.get('indicadores', dados_mercado)
+
     # PROMPT DE ENGENHARIA QUANTITATIVA (Otimizado para Scalping M1)
     payload = {
         "model": "llama-3.3-70b-versatile",
@@ -39,22 +43,22 @@ def analisar():
             {
                 "role": "system", 
                 "content": (
-                    "Você é o motor de execução de um Robô Scalper de Alta Performance. "
+                    f"Você é o motor de execução de um Robô Scalper de Alta Performance para o ativo {asset_name}. "
                     "Seu objetivo é analisar dados OHLC e indicadores (RSI, Tendência) para emitir sinais curtos. "
                     "ESTRATÉGIA: Momentum + Rejeição. "
-                    "DIRETRIZ: Não seja tímido. Minimize o uso de 'NEUTRO'. "
-                    "Se RSI < 40 ou candle martelo em suporte -> CALL. "
-                    "Se RSI > 60 ou rejeição em resistência -> PUT. "
+                    "DIRETRIZ: Seja decisivo. Minimize o uso de 'NEUTRO'. Use 'NEUTRO' apenas se não houver volume. "
+                    "Se RSI < 45 ou candle martelo em suporte -> CALL. "
+                    "Se RSI > 55 ou rejeição em resistência -> PUT. "
                     "RESPOSTA OBRIGATÓRIA EM JSON: "
                     '{"direcao": "CALL"|"PUT"|"NEUTRO", "confianca": 0-100, "motivo": "frase curta"}'
                 )
             },
             {
                 "role": "user", 
-                "content": f"Dados Atuais: {json.dumps(dados_mercado)}"
+                "content": f"Dados Técnicos de {asset_name}: {json.dumps(indicadores)}"
             }
         ],
-        "temperature": 0.6, # Equilíbrio entre precisão e decisão
+        "temperature": 0.2, # Reduzido para aumentar a assertividade técnica e reduzir neutralidade
         "max_tokens": 150,
         "response_format": {"type": "json_object"} # Garante saída JSON válida
     }
@@ -65,8 +69,8 @@ def analisar():
     }
 
     try:
-        # Request para Groq com timeout de segurança
-        response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=20)
+        # Request para Groq com timeout de segurança otimizado para scalping
+        response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=15)
         
         if response.status_code != 200:
             return jsonify({
@@ -86,7 +90,7 @@ def analisar():
                 veredito['direcao'] = str(veredito.get('direcao', 'NEUTRO')).upper()
                 veredito['confianca'] = int(veredito.get('confianca', 0))
                 
-                # Re-encapsulamento no formato que o analiseGeral.js espera
+                # Re-encapsulamento preservando a compatibilidade com o frontend atual
                 return jsonify({
                     "choices": [{
                         "message": {
