@@ -21,24 +21,24 @@ class AnaliseGeral {
         if (Array.isArray(velas)) {
             // Carga inicial de histórico (count: 50)
             this.historicoVelas = velas.map(v => ({
-                open: parseFloat(v.open),
-                high: parseFloat(v.high),
-                low: parseFloat(v.low),
-                close: parseFloat(v.close),
-                epoch: parseInt(v.epoch)
-            }));
+                open: parseFloat(v.open || 0),
+                high: parseFloat(v.high || 0),
+                low: parseFloat(v.low || 0),
+                close: parseFloat(v.close || 0),
+                epoch: parseInt(v.epoch || 0)
+            })).filter(v => v.epoch > 0);
         } else if (velas && typeof velas === 'object') {
             // Processamento de Tick em Tempo Real (OHLC) - Normalização explícita
             const novaVela = {
-                open: parseFloat(velas.open || velas.o),
-                high: parseFloat(velas.high || velas.h),
-                low: parseFloat(velas.low || velas.l),
-                close: parseFloat(velas.close || velas.c),
-                epoch: parseInt(velas.epoch || velas.e)
+                open: parseFloat(velas.open || velas.o || 0),
+                high: parseFloat(velas.high || velas.h || 0),
+                low: parseFloat(velas.low || velas.l || 0),
+                close: parseFloat(velas.close || velas.c || 0),
+                epoch: parseInt(velas.epoch || velas.e || 0)
             };
             
             if (this.historicoVelas.length === 0) {
-                this.historicoVelas.push(novaVela);
+                if (novaVela.epoch > 0) this.historicoVelas.push(novaVela);
                 return;
             }
 
@@ -47,7 +47,7 @@ class AnaliseGeral {
             // Se o epoch for maior, é uma nova vela de 1 minuto
             if (novaVela.epoch > ultimaVela.epoch) {
                 this.historicoVelas.push(novaVela);
-            } else {
+            } else if (novaVela.epoch === ultimaVela.epoch) {
                 // Se for o mesmo epoch, atualiza a vela atual (formação do OHLC)
                 this.historicoVelas[this.historicoVelas.length - 1] = novaVela;
             }
@@ -61,7 +61,7 @@ class AnaliseGeral {
 
     calcularIndicadoresLocais() {
         // Precisamos de pelo menos 14 velas para RSI e Dow (Problema 4)
-        if (!this.historicoVelas || this.historicoVelas.length < 14) {
+        if (!this.historicoVelas || this.historicoVelas.length < 15) {
             return { tendenciaDow: "NEUTRA", isMartelo: false, rsi: 50, pronto: false };
         }
 
@@ -81,8 +81,8 @@ class AnaliseGeral {
         // 3. RSI Real (Período 14)
         let ganhos = 0;
         let perdas = 0;
+        // Começa em v.length - 14 para garantir i-1 válido
         for (let i = v.length - 14; i < v.length; i++) {
-            if (!v[i-1]) continue;
             const diff = v[i].close - v[i-1].close;
             if (diff >= 0) ganhos += diff;
             else perdas += Math.abs(diff);
@@ -162,8 +162,8 @@ class AnaliseGeral {
             const resIA = data.choices ? JSON.parse(data.choices[0].message.content) : data;
             
             return {
-                direcao: resIA.direcao || "NEUTRO",
-                confianca: resIA.confianca || 0,
+                direcao: (resIA.direcao || "NEUTRO").toUpperCase(),
+                confianca: parseInt(resIA.confianca || 0),
                 motivo: resIA.motivo || "Análise concluída",
                 asset: payload.asset // Echo para conferência de segurança
             };
