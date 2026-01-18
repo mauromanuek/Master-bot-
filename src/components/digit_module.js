@@ -15,7 +15,7 @@ const DigitModule = {
                         <h2 class="text-xl font-bold text-yellow-500 italic uppercase leading-none">Digit Strategy</h2>
                         <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: ${app.currentAsset}</span>
                     </div>
-                    <div id="d-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm"></div>
+                    <div id="d-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded-xl border border-gray-800 shadow-lg">
@@ -83,7 +83,7 @@ const DigitModule = {
             indicator.classList.replace('bg-gray-600', 'bg-yellow-500');
             indicator.classList.add('animate-pulse');
             
-            this.tickBuffer = []; // Limpa histórico ao iniciar
+            this.tickBuffer = [];
             this.log(`ESTRATÉGIA DIGITS ATIVA EM ${app.currentAsset}`, "text-yellow-400 font-bold");
             
             this.setupListeners();
@@ -98,11 +98,10 @@ const DigitModule = {
         }
     },
 
-    // Sincroniza com o fluxo de ticks da DerivAPI
     processTick(tickData) {
-        if (!this.isAnalysisRunning) return;
+        // Bloqueio se inativo ou se o tick for de um ativo diferente do atual
+        if (!this.isAnalysisRunning || tickData.symbol !== app.currentAsset) return;
 
-        // Extrai o último dígito do preço atual
         const lastDigit = parseInt(tickData.quote.toString().slice(-1));
         this.tickBuffer.push(lastDigit);
 
@@ -126,13 +125,18 @@ const DigitModule = {
 
         const overEl = document.getElementById('perc-over');
         const underEl = document.getElementById('perc-under');
+        const boxOver = document.getElementById('box-over');
+        const boxUnder = document.getElementById('box-under');
         
         if (overEl) overEl.innerText = pOver + "%";
         if (underEl) underEl.innerText = pUnder + "%";
 
-        // Feedback visual de força de tendência
-        document.getElementById('box-over').className = `bg-gray-900 p-4 rounded-2xl border-2 text-center transition-all duration-300 ${pOver >= 65 ? 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'border-transparent'}`;
-        document.getElementById('box-under').className = `bg-gray-900 p-4 rounded-2xl border-2 text-center transition-all duration-300 ${pUnder >= 65 ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'border-transparent'}`;
+        if (boxOver) {
+            boxOver.className = `bg-gray-900 p-4 rounded-2xl border-2 text-center transition-all duration-300 ${pOver >= 65 ? 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' : 'border-transparent'}`;
+        }
+        if (boxUnder) {
+            boxUnder.className = `bg-gray-900 p-4 rounded-2xl border-2 text-center transition-all duration-300 ${pUnder >= 65 ? 'border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'border-transparent'}`;
+        }
     },
 
     checkStrategy() {
@@ -144,9 +148,9 @@ const DigitModule = {
         const pOver = (this.tickBuffer.filter(d => d > 5).length / total) * 100;
         const pUnder = (this.tickBuffer.filter(d => d < 5).length / total) * 100;
         
-        const stake = document.getElementById('d-stake').value;
+        const stakeInput = document.getElementById('d-stake');
+        const stake = stakeInput ? stakeInput.value : 1;
 
-        // Gatilho de entrada: 70% de dominância nos últimos 50 ticks
         if (pOver >= 70) {
             this.executeTrade('DIGITOVER', stake);
         } else if (pUnder >= 70) {
@@ -158,7 +162,6 @@ const DigitModule = {
         this.isTrading = true;
         this.log(`PADRÃO DETECTADO! ENTRANDO EM ${type}...`, "text-green-400 font-bold");
 
-        // Parâmetros específicos para estratégia de dígitos
         const extraParams = { 
             barrier: "5", 
             duration: 1, 
@@ -174,48 +177,53 @@ const DigitModule = {
     },
 
     setupListeners() {
-        // Centraliza o recebimento de contratos finalizados
         if (this._handler) document.removeEventListener('contract_finished', this._handler);
         this._handler = (e) => {
-            if (e.detail.prefix === 'd') {
+            if (e.detail && e.detail.prefix === 'd') {
                 this.handleContractResult(e.detail.profit);
             }
         };
         document.addEventListener('contract_finished', this._handler);
-
-        // Garante que a DerivAPI nos envie ticks (v3 ticks subscribe)
-        DerivAPI.socket.send(JSON.stringify({
-            ticks: app.currentAsset,
-            subscribe: 1
-        }));
     },
 
     handleContractResult(profit) {
         this.currentProfit += profit;
-        profit > 0 ? this.stats.wins++ : this.stats.losses++;
+        if (profit > 0) {
+            this.stats.wins++;
+        } else {
+            this.stats.losses++;
+        }
         
         this.updateUI_Stats(profit);
 
-        // Cool-down de 3 segundos antes de permitir nova operação de dígitos
+        // Notifica o app principal
+        if (typeof app.updateModuleProfit === 'function') {
+            app.moduleProfits['d'] = this.currentProfit;
+        }
+
         setTimeout(() => {
             this.isTrading = false;
             if (this.isAnalysisRunning) {
-                this.log("REINICIANDO MONITORAMENTO DE DÍGITOS...", "text-gray-500");
+                this.log("RETOMANDO MONITORAMENTO...", "text-gray-500");
             }
-        }, 3000);
+        }, 2000);
     },
 
     checkLimits() {
-        const tp = parseFloat(document.getElementById('d-tp').value);
-        const sl = parseFloat(document.getElementById('d-sl').value);
+        const tpInput = document.getElementById('d-tp');
+        const slInput = document.getElementById('d-sl');
+        if (!tpInput || !slInput) return false;
+
+        const tp = parseFloat(tpInput.value);
+        const sl = parseFloat(slInput.value);
 
         if (this.currentProfit >= tp) {
-            this.log(`META DE LUCRO (${tp} USD) ALCANÇADA!`, "text-green-500 font-black");
+            this.log(`META DE LUCRO (${tp.toFixed(2)} USD) ALCANÇADA!`, "text-green-500 font-black");
             this.analyze();
             return true;
         }
         if (this.currentProfit <= (sl * -1)) {
-            this.log(`LIMITE DE PERDA (-${sl} USD) ATINGIDO!`, "text-red-500 font-black");
+            this.log(`LIMITE DE PERDA (-${sl.toFixed(2)} USD) ATINGIDO!`, "text-red-500 font-black");
             this.analyze();
             return true;
         }
@@ -225,14 +233,17 @@ const DigitModule = {
     updateUI_Stats(lastProfit) {
         const profitEl = document.getElementById('d-val-profit');
         if (profitEl) {
-            profitEl.innerText = `${(this.currentProfit >= 0 ? '+' : '')}${this.currentProfit.toFixed(2)} USD`;
+            const prefix = this.currentProfit >= 0 ? '+' : '';
+            profitEl.innerText = `${prefix}${this.currentProfit.toFixed(2)} USD`;
             profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
         }
 
-        document.getElementById('d-stat-w').innerText = this.stats.wins;
-        document.getElementById('d-stat-l').innerText = this.stats.losses;
+        const winEl = document.getElementById('d-stat-w');
+        const lossEl = document.getElementById('d-stat-l');
+        if (winEl) winEl.innerText = this.stats.wins;
+        if (lossEl) lossEl.innerText = this.stats.losses;
 
         const color = lastProfit > 0 ? "text-green-500" : "text-red-500";
-        this.log(`CONTRATO DÍGITOS: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
+        this.log(`CONTRATO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
     }
 };
