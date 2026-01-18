@@ -3,6 +3,7 @@ class AnaliseGeral {
         // Define a rota do backend atualizada para a Vercel
         this.backendUrl = backendUrl || "https://master-bot-beta.vercel.app/analisar";
         this.historicoVelas = [];
+        this._analisando = false; // Lock de execução para evitar múltiplas chamadas simultâneas
     }
 
     /**
@@ -11,6 +12,7 @@ class AnaliseGeral {
      */
     limparHistorico() {
         this.historicoVelas = [];
+        this._analisando = false; 
         console.log("Buffer de análise limpo para novo ativo.");
     }
 
@@ -26,13 +28,13 @@ class AnaliseGeral {
                 epoch: parseInt(v.epoch)
             }));
         } else if (velas && typeof velas === 'object') {
-            // Processamento de Tick em Tempo Real (OHLC)
+            // Processamento de Tick em Tempo Real (OHLC) - Normalização explícita
             const novaVela = {
-                open: parseFloat(velas.open),
-                high: parseFloat(velas.high),
-                low: parseFloat(velas.low),
-                close: parseFloat(velas.close),
-                epoch: parseInt(velas.epoch)
+                open: parseFloat(velas.open || velas.o),
+                high: parseFloat(velas.high || velas.h),
+                low: parseFloat(velas.low || velas.l),
+                close: parseFloat(velas.close || velas.c),
+                epoch: parseInt(velas.epoch || velas.e)
             };
             
             if (this.historicoVelas.length === 0) {
@@ -91,32 +93,32 @@ class AnaliseGeral {
             tendenciaDow, 
             isMartelo, 
             rsi: Math.round(rsi),
-            volume_check: atual.high !== atual.low,
+            volatilidade: atual.high !== atual.low,
             pronto: true
         };
     }
 
-    async obterVereditoCompleto() {
+    async obterVereditoCompleto(assetOverride = null) {
+        // Lock de proteção para evitar múltiplas chamadas (Problema: IA bloqueia o ciclo)
+        if (this._analisando) return null;
+
         const indicadores = this.calcularIndicadoresLocais();
-        
-        // Garante que o ativo analisado seja EXATAMENTE o que o sistema exibe
-        const assetName = window.app ? app.currentAsset : "R_100";
+        // Resolve contaminação: Usa assetOverride (Radar) ou o asset fixo do momento da chamada
+        const assetName = assetOverride || (window.app ? app.currentAsset : "R_100");
         
         if (!indicadores.pronto) {
             return {
                 direcao: "NEUTRO",
                 confianca: 0,
-                motivo: "Aguardando maturação de dados (Mínimo 14 velas)"
+                motivo: "Aguardando maturação (Mínimo 14 velas)"
             };
         }
 
-        // Prepara histórico reduzido para a IA economizar tokens e focar no momentum
         const priceActionData = this.historicoVelas.slice(-15).map(v => ({
             o: v.open, h: v.high, l: v.low, c: v.close
         }));
 
         const payload = {
-            contexto: `Scalping Profissional - LLaMA 3.3`,
             asset: assetName,
             indicadores: {
                 tendencia: indicadores.tendenciaDow,
@@ -126,47 +128,56 @@ class AnaliseGeral {
             }
         };
 
-        return await this.chamarGroq(payload);
+        this._analisando = true;
+        try {
+            const veredito = await this.chamarGroq(payload);
+            this._analisando = false;
+            return veredito;
+        } catch (e) {
+            this._analisando = false;
+            throw e;
+        }
     }
 
     async chamarGroq(payload) {
         try {
+            // Timeout via AbortController para não travar o bot
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+
             const response = await fetch(this.backendUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: controller.signal
             });
 
-            if (!response.ok) throw new Error("Erro na rede/Vercel");
+            clearTimeout(timeoutId);
+
+            if (!response.ok) throw new Error("Erro Vercel");
 
             const data = await response.json();
             
-            if (data.choices && data.choices[0]) {
-                const veredito = JSON.parse(data.choices[0].message.content);
-                return {
-                    direcao: veredito.direcao || "NEUTRO",
-                    confianca: veredito.confianca || 0,
-                    motivo: veredito.motivo || "Análise concluída pela IA"
-                };
-            }
-            throw new Error("Formato de resposta inválido");
+            // Adaptado para o novo formato simplificado do app.py corrigido
+            const resIA = data.choices ? JSON.parse(data.choices[0].message.content) : data;
+            
+            return {
+                direcao: resIA.direcao || "NEUTRO",
+                confianca: resIA.confianca || 0,
+                motivo: resIA.motivo || "Análise concluída",
+                asset: payload.asset // Echo para conferência de segurança
+            };
 
         } catch (e) {
-            console.warn("Fallback Ativado:", e.message);
             const ind = this.calcularIndicadoresLocais();
-            
-            // Lógica Técnica Híbrida de Contingência
             let direcao = "NEUTRO";
-            let confianca = 50;
-
-            if (ind.rsi < 30) { direcao = "CALL"; confianca = 65; }
-            else if (ind.rsi > 70) { direcao = "PUT"; confianca = 65; }
-            else if (ind.isMartelo && ind.tendenciaDow === "BAIXA") { direcao = "CALL"; confianca = 60; }
+            if (ind.rsi < 30) direcao = "CALL";
+            else if (ind.rsi > 70) direcao = "PUT";
 
             return {
                 direcao: direcao,
-                confianca: confianca,
-                motivo: "Análise Técnica Local (IA em Standby)"
+                confianca: 50,
+                motivo: "Fallback: Análise Técnica Local"
             };
         }
     }
