@@ -4,6 +4,7 @@ const AutoModule = {
     currentProfit: 0,
     stats: { wins: 0, losses: 0, total: 0 },
     _handler: null,
+    _cycleTimeout: null, // Controle para evitar múltiplas execuções
 
     render() {
         return `
@@ -73,6 +74,7 @@ const AutoModule = {
             this.setupListener(); 
             this.runCycle();
         } else {
+            if (this._cycleTimeout) clearTimeout(this._cycleTimeout);
             btn.innerText = "INICIAR ROBÔ";
             btn.classList.replace('bg-red-600', 'bg-purple-600');
             indicator.classList.replace('bg-purple-500', 'bg-gray-600');
@@ -96,60 +98,55 @@ const AutoModule = {
 
     async runCycle() {
         if (!this.isRunning || this.isTrading) return;
-
         if (this.checkLimits()) return;
 
-        const targetAsset = app.currentAsset;
-        this.log(`IA ANALISANDO ${targetAsset}...`, "text-blue-400");
+        const assetAtStart = app.currentAsset; // Snapshot do ativo no início da análise
+        this.log(`IA ANALISANDO ${assetAtStart}...`, "text-blue-400");
         
         try {
-            // Garante que a análise seja feita no ativo atual
-            const veredito = await app.analista.obterVereditoCompleto(targetAsset);
+            const veredito = await app.analista.obterVereditoCompleto(assetAtStart);
             
-            if (!this.isRunning || this.isTrading) return;
+            // Validações pós-análise: O bot ainda está rodando? O ativo ainda é o mesmo?
+            if (!this.isRunning || this.isTrading || !veredito) {
+                this.scheduleNext(3000);
+                return;
+            }
+
+            if (app.currentAsset !== assetAtStart) {
+                this.log("TROCA DE ATIVO DETECTADA. REINICIANDO CICLO.", "text-yellow-500");
+                this.scheduleNext(1000);
+                return;
+            }
 
             if ((veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
+                const stake = document.getElementById('a-stake')?.value || 10;
                 
-                const stakeInput = document.getElementById('a-stake');
-                const stake = stakeInput ? stakeInput.value : 10;
-                
-                this.log(`SINAL IA: ${veredito.direcao} (${veredito.confianca}%) NO ATIVO ${targetAsset}`, "text-green-500 font-bold");
-
+                this.log(`SINAL IA: ${veredito.direcao} (${veredito.confianca}%) - ${veredito.estratégia}`, "text-green-500 font-bold");
                 this.isTrading = true;
                 
                 DerivAPI.buy(veredito.direcao, stake, 'a', (res) => {
                     if (res.error) {
                         this.log(`ERRO NA COMPRA: ${res.error.message}`, "text-red-500");
                         this.isTrading = false;
-                        if (this.isRunning) setTimeout(() => this.runCycle(), 3000);
+                        this.scheduleNext(3000);
                     }
                 });
             } else {
-                this.log(`SINAL FRACO (${veredito.confianca}%). REAVALIANDO...`, "text-gray-600 italic");
-                if (this.isRunning) setTimeout(() => this.runCycle(), 3000);
+                this.log(`SINAL INSUFICIENTE (${veredito.confianca}%). AGUARDANDO...`, "text-gray-600 italic");
+                this.scheduleNext(4000);
             }
 
         } catch (e) {
-            this.log("CONEXÃO IA INSTÁVEL - EXECUTANDO ANÁLISE TÉCNICA LOCAL", "text-orange-500");
-            const local = app.analista.calcularIndicadoresLocais();
-            
-            let direcao = "WAIT";
-            if (local.rsi < 30) direcao = "CALL";
-            else if (local.rsi > 70) direcao = "PUT";
+            this.log(`ERRO DE COMUNICAÇÃO: ${e.message}`, "text-orange-500");
+            this.isTrading = false;
+            this.scheduleNext(5000);
+        }
+    },
 
-            if (direcao !== "WAIT" && this.isRunning && !this.isTrading) {
-                this.isTrading = true;
-                const stake = document.getElementById('a-stake').value;
-                this.log(`ENTRADA TÉCNICA (FALLBACK): ${direcao} (RSI: ${local.rsi.toFixed(2)})`, "text-orange-400");
-                DerivAPI.buy(direcao, stake, 'a', (res) => {
-                    if (res.error) { 
-                        this.isTrading = false; 
-                        if (this.isRunning) setTimeout(() => this.runCycle(), 3000); 
-                    }
-                });
-            } else {
-                if (this.isRunning) setTimeout(() => this.runCycle(), 3000);
-            }
+    scheduleNext(ms) {
+        if (this._cycleTimeout) clearTimeout(this._cycleTimeout);
+        if (this.isRunning && !this.isTrading) {
+            this._cycleTimeout = setTimeout(() => this.runCycle(), ms);
         }
     },
 
@@ -163,32 +160,27 @@ const AutoModule = {
         
         this.updateUI(profit);
 
-        // Sincroniza lucro no app global
         if (typeof app.updateModuleProfit === 'function') {
             app.moduleProfits['a'] = this.currentProfit;
         }
 
         if (this.isRunning) {
-            this.log(`AGUARDANDO CICLO DE 1.5s...`, "text-gray-500");
-            setTimeout(() => this.runCycle(), 1500);
+            this.log(`CICLO FINALIZADO. REINICIANDO EM 2s...`, "text-gray-500");
+            this.scheduleNext(2000);
         }
     },
 
     checkLimits() {
-        const tpInput = document.getElementById('a-tp');
-        const slInput = document.getElementById('a-sl');
-        if (!tpInput || !slInput) return false;
+        const tp = parseFloat(document.getElementById('a-tp')?.value || 0);
+        const sl = parseFloat(document.getElementById('a-sl')?.value || 0);
 
-        const tp = parseFloat(tpInput.value);
-        const sl = parseFloat(slInput.value);
-
-        if (this.currentProfit >= tp) {
-            this.log(`META DE LUCRO (${tp.toFixed(2)} USD) ATINGIDA!`, "text-green-500 font-black");
+        if (this.currentProfit >= tp && tp > 0) {
+            this.log(`META DE LUCRO (${tp.toFixed(2)}) ATINGIDA!`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
-        if (this.currentProfit <= (sl * -1)) {
-            this.log(`LIMITE DE PERDA (-${sl.toFixed(2)} USD) ATINGIDO!`, "text-red-500 font-black");
+        if (this.currentProfit <= (sl * -1) && sl > 0) {
+            this.log(`STOP LOSS (-${sl.toFixed(2)}) ATINGIDO!`, "text-red-500 font-black");
             this.toggle();
             return true;
         }
@@ -203,12 +195,10 @@ const AutoModule = {
             profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
         }
 
-        const winStat = document.getElementById('a-stat-w');
-        const lossStat = document.getElementById('a-stat-l');
-        if (winStat) winStat.innerText = this.stats.wins;
-        if (lossStat) lossStat.innerText = this.stats.losses;
+        if (document.getElementById('a-stat-w')) document.getElementById('a-stat-w').innerText = this.stats.wins;
+        if (document.getElementById('a-stat-l')) document.getElementById('a-stat-l').innerText = this.stats.losses;
 
         const color = lastProfit > 0 ? "text-green-500" : "text-red-500";
-        this.log(`CONTRATO FINALIZADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
+        this.log(`RESULTADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
     }
 };
