@@ -4,6 +4,7 @@ const ManualModule = {
     currentProfit: 0,
     stats: { wins: 0, losses: 0, total: 0 },
     _handler: null,
+    _analysisTimeout: null,
 
     render() {
         return `
@@ -78,6 +79,7 @@ const ManualModule = {
             this.setupListener();
             this.runCycle();
         } else {
+            if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
             btn.innerText = "Iniciar Monitoramento";
             btn.classList.replace('bg-red-600', 'bg-blue-600');
             indicator.classList.replace('bg-green-500', 'bg-gray-600');
@@ -89,39 +91,30 @@ const ManualModule = {
     },
 
     setupListener() {
-        // Remove handler antigo para não duplicar lucros/resultados
         if (this._handler) {
             document.removeEventListener('contract_finished', this._handler);
         }
-        
         this._handler = (e) => {
-            // Verifica se o resultado pertence a este módulo (m = manual)
             if (e.detail && e.detail.prefix === 'm') {
                 this.handleContractResult(e.detail.profit);
             }
         };
-        
         document.addEventListener('contract_finished', this._handler);
     },
 
     async runCycle() {
-        // Bloqueia execução se inativo, trocando de aba ou já operando
         if (!this.isActive || this.isTrading) return;
-
-        // Verifica Meta e Stop antes de analisar
         if (this.checkLimits()) return;
 
         this.log(`IA ANALISANDO ${app.currentAsset}...`, "text-gray-500");
         this.resetButtons();
 
         try {
-            // Força o analista a usar o ativo atual da UI (Resolve Problema 1)
             const veredito = await app.analista.obterVereditoCompleto(app.currentAsset);
             
             if (!this.isActive || this.isTrading) return;
 
-            // Filtro de Confiança Profissional
-            if ((veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
+            if (veredito && (veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
                 const side = veredito.direcao.toLowerCase();
                 const target = document.getElementById('btn-' + side);
                 
@@ -129,21 +122,24 @@ const ManualModule = {
                     target.disabled = false;
                     target.style.opacity = "1";
                     target.classList.add('animate-pulse');
-                    this.log(`SINAL IA: ${veredito.direcao} (${veredito.confianca}%) - LIBERADO`, "text-green-500 font-bold");
+                    this.log(`IA LIBEROU ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
                     
-                    // Se o usuário não clicar em 15 segundos, o botão reseta para reanalisar
-                    setTimeout(() => {
-                        if(!this.isTrading && this.isActive) this.runCycle();
+                    // Validade do sinal: 15 segundos
+                    if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
+                    this._analysisTimeout = setTimeout(() => {
+                        if(!this.isTrading && this.isActive) {
+                            this.log("SINAL EXPIRADO. REANALISANDO...", "text-gray-500");
+                            this.runCycle();
+                        }
                     }, 15000);
                 }
             } else {
-                this.log(`CONDIÇÃO NEUTRA OU BAIXA CONFIANÇA (${veredito.confianca}%). REAVALIANDO...`, "text-gray-600");
-                setTimeout(() => this.runCycle(), 5000);
+                this.log(`MERCADO INCERTO (${veredito?.confianca || 0}%). REAVALIANDO...`, "text-gray-600");
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 5000);
             }
         } catch (e) {
-            console.error("Erro no ciclo manual:", e);
-            this.log("ERRO NA ANÁLISE. TENTANDO NOVAMENTE...", "text-red-400");
-            setTimeout(() => this.runCycle(), 7000);
+            this.log("ERRO NA CONEXÃO IA.", "text-red-400");
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 7000);
         }
     },
 
@@ -151,19 +147,16 @@ const ManualModule = {
         if (this.isTrading || !this.isActive) return;
 
         this.isTrading = true;
-        const stakeInput = document.getElementById('m-stake');
-        const stake = stakeInput ? stakeInput.value : 10;
+        const stake = document.getElementById('m-stake')?.value || 10;
 
-        this.log(`EXECUTANDO ${type} NO ATIVO ${app.currentAsset}`, "text-yellow-400 font-bold");
-
-        // Reseta botões imediatamente após o clique para evitar cliques duplos
+        this.log(`MANUAL: EXECUTANDO ${type}...`, "text-yellow-400 font-bold");
         this.resetButtons();
 
         DerivAPI.buy(type, stake, 'm', (res) => {
             if (res.error) {
-                this.log(`ERRO NA COMPRA: ${res.error.message}`, "text-red-500");
+                this.log(`ERRO: ${res.error.message}`, "text-red-500");
                 this.isTrading = false;
-                if (this.isActive) setTimeout(() => this.runCycle(), 3000);
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 3000);
             }
         });
     },
@@ -173,40 +166,33 @@ const ManualModule = {
         this.currentProfit += profit;
         
         this.stats.total++;
-        if (profit > 0) {
-            this.stats.wins++;
-        } else {
-            this.stats.losses++;
-        }
+        if (profit > 0) this.stats.wins++;
+        else this.stats.losses++;
         
         this.updateUI(profit);
 
-        // Atualiza lucro global no objeto principal app
+        // SINCRONIZAÇÃO COM FOOTER E GLOBAL
         if (typeof app.updateModuleProfit === 'function') {
-            app.moduleProfits['m'] = this.currentProfit;
+            app.updateModuleProfit(profit, 'm');
         }
 
         if (this.isActive) {
-            this.log("AGUARDANDO 1.5s PARA NOVA ANÁLISE.", "text-blue-400");
-            setTimeout(() => this.runCycle(), 1500);
+            this.log("CICLO CONCLUÍDO. REANALISANDO EM 2s...", "text-blue-400");
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
         }
     },
 
     checkLimits() {
-        const tpInput = document.getElementById('m-tp');
-        const slInput = document.getElementById('m-sl');
-        if (!tpInput || !slInput) return false;
+        const tp = parseFloat(document.getElementById('m-tp')?.value || 0);
+        const sl = parseFloat(document.getElementById('m-sl')?.value || 0);
 
-        const tp = parseFloat(tpInput.value);
-        const sl = parseFloat(slInput.value);
-
-        if (this.currentProfit >= tp) {
-            this.log(`META DE LUCRO (${tp.toFixed(2)} USD) ALCANÇADA!`, "text-green-500 font-black");
+        if (this.currentProfit >= tp && tp > 0) {
+            this.log(`META ALCANÇADA: +${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
-        if (this.currentProfit <= (sl * -1)) {
-            this.log(`STOP LOSS (-${sl.toFixed(2)} USD) ATINGIDO!`, "text-red-500 font-black");
+        if (this.currentProfit <= (sl * -1) && sl > 0) {
+            this.log(`STOP LOSS ATINGIDO: ${this.currentProfit.toFixed(2)}`, "text-red-500 font-black");
             this.toggle();
             return true;
         }
@@ -214,9 +200,6 @@ const ManualModule = {
     },
 
     updateUI(lastProfit) {
-        const color = lastProfit >= 0 ? 'text-green-500' : 'text-red-500';
-        this.log(`CONTRATO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
-        
         const profitEl = document.getElementById('m-val-profit');
         if (profitEl) {
             const prefix = this.currentProfit >= 0 ? '+' : '';
@@ -224,10 +207,11 @@ const ManualModule = {
             profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
         }
 
-        const winStat = document.getElementById('m-stat-w');
-        const lossStat = document.getElementById('m-stat-l');
-        if(winStat) winStat.innerText = this.stats.wins;
-        if(lossStat) lossStat.innerText = this.stats.losses;
+        if(document.getElementById('m-stat-w')) document.getElementById('m-stat-w').innerText = this.stats.wins;
+        if(document.getElementById('m-stat-l')) document.getElementById('m-stat-l').innerText = this.stats.losses;
+
+        const color = lastProfit > 0 ? 'text-green-500' : 'text-red-500';
+        this.log(`RESULTADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
     },
 
     resetButtons() {
