@@ -65,7 +65,8 @@ const DerivAPI = {
         
         this.log(`Trocando ativo: ${this.currentSymbol} -> ${newSymbol}`);
         
-        // 1. Limpa todas as subscrições ativas no servidor para evitar lixo de dados
+        // 1. Limpa todas as subscrições ativas para evitar overlap de dados
+        // Enviamos forget_all mas mantemos o fluxo de contratos/saldo vivos via handleResponses
         this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
 
@@ -77,13 +78,16 @@ const DerivAPI = {
             app.currentAsset = newSymbol; 
         }
 
-        // 3. Reinicia subscrições para o novo ativo
-        this.subscribeCandles(this.callbacks['candles']);
-        
-        // 4. Se o módulo de dígitos estiver ativo, reinicia a subscrição de ticks
-        if (window.DigitModule && DigitModule.isAnalysisRunning) {
-            this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
-        }
+        // 3. Pequeno delay para garantir que o servidor processou o 'forget_all'
+        setTimeout(() => {
+            // Reinicia subscrições para o novo ativo
+            this.subscribeCandles(this.callbacks['candles']);
+            
+            // Se o módulo de dígitos estiver ativo, reinicia a subscrição de ticks
+            if (window.DigitModule && DigitModule.isAnalysisRunning) {
+                this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
+            }
+        }, 500);
     },
 
     /**
@@ -150,7 +154,7 @@ const DerivAPI = {
             this.candleSubscriptionId = data.subscription.id;
         }
 
-        // --- CANAL 1: Histórico Inicial (Array) e Velas ---
+        // --- CANAL 1: Histórico Inicial (Array) ---
         if (data.msg_type === 'candles' && this.callbacks['candles']) {
             this.callbacks['candles'](data.candles);
             
@@ -160,22 +164,29 @@ const DerivAPI = {
             }
         } 
         
-        // --- CANAL 2: Vela em Formação (OHLC) ---
+        // --- CANAL 2: Vela em Formação (OHLC) - Normalização de Dados ---
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol && this.callbacks['candles']) {
-                this.callbacks['candles'](data.ohlc);
+                // Criamos um objeto normalizado para evitar que o analista receba formatos diferentes
+                const normalizedCandle = {
+                    epoch: data.ohlc.open_time,
+                    open: data.ohlc.open,
+                    high: data.ohlc.high,
+                    low: data.ohlc.low,
+                    close: data.ohlc.close
+                };
                 
-                // Alimenta o analista com a vela em tempo real
+                this.callbacks['candles'](normalizedCandle);
+                
                 if (window.app && app.analista) {
-                    app.analista.adicionarDados(data.ohlc);
+                    app.analista.adicionarDados(normalizedCandle);
                 }
             }
         }
 
-        // --- CANAL 3: Ticks em tempo real (Estratégia de Decisão Total e Dígitos) ---
+        // --- CANAL 3: Ticks em tempo real ---
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
-                // ENTRADA CRÍTICA: Envia o tick bruto para a IA sentir a velocidade do mercado
                 if (window.app && app.analista) {
                     app.analista.adicionarDados(null, data.tick.quote);
                 }
@@ -204,7 +215,7 @@ const DerivAPI = {
             }
         }
 
-        // --- CANAL 6: Monitoramento de Resultados (Ganho/Perda) ---
+        // --- CANAL 6: Monitoramento de Resultados ---
         if (data.msg_type === 'proposal_open_contract') {
             const c = data.proposal_open_contract;
             if (!c || !c.is_sold) return;
@@ -212,10 +223,8 @@ const DerivAPI = {
             const prefix = this.activeContracts[c.contract_id] || 'm';
             const profit = parseFloat(c.profit);
             
-            // Remove do monitoramento ativo
             delete this.activeContracts[c.contract_id];
             
-            // Notifica os componentes UI que o contrato acabou
             document.dispatchEvent(new CustomEvent('contract_finished', { 
                 detail: { prefix, profit, contract: c } 
             }));
