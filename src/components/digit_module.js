@@ -13,7 +13,7 @@ const DigitModule = {
                 <div class="flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-bold text-yellow-500 italic uppercase leading-none">Digit Strategy</h2>
-                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: ${app.currentAsset}</span>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: <span id="d-current-asset">${app.currentAsset}</span></span>
                     </div>
                     <div id="d-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
@@ -83,7 +83,7 @@ const DigitModule = {
             indicator.classList.replace('bg-gray-600', 'bg-yellow-500');
             indicator.classList.add('animate-pulse');
             
-            this.tickBuffer = [];
+            this.tickBuffer = []; // Limpa buffer ao iniciar
             this.log(`ESTRATÉGIA DIGITS ATIVA EM ${app.currentAsset}`, "text-yellow-400 font-bold");
             
             this.setupListeners();
@@ -99,18 +99,26 @@ const DigitModule = {
     },
 
     processTick(tickData) {
-        // Bloqueio se inativo ou se o tick for de um ativo diferente do atual
-        if (!this.isAnalysisRunning || tickData.symbol !== app.currentAsset) return;
-
-        const lastDigit = parseInt(tickData.quote.toString().slice(-1));
-        this.tickBuffer.push(lastDigit);
-
-        if (this.tickBuffer.length > this.maxTicks) {
-            this.tickBuffer.shift();
+        // CORREÇÃO: Bloqueio rigoroso de ativo e estado
+        if (!this.isAnalysisRunning) return;
+        if (tickData.symbol !== app.currentAsset) {
+            this.tickBuffer = []; // Reset se houver troca de ativo repentina
+            const assetLabel = document.getElementById('d-current-asset');
+            if (assetLabel) assetLabel.innerText = app.currentAsset;
+            return;
         }
 
-        this.updateUI();
-        this.checkStrategy();
+        // Extração robusta do último dígito (considerando strings e números)
+        const quoteStr = tickData.quote.toString();
+        const lastDigit = parseInt(quoteStr.charAt(quoteStr.length - 1));
+        
+        if (!isNaN(lastDigit)) {
+            this.tickBuffer.push(lastDigit);
+            if (this.tickBuffer.length > this.maxTicks) this.tickBuffer.shift();
+            
+            this.updateUI();
+            this.checkStrategy();
+        }
     },
 
     updateUI() {
@@ -140,7 +148,7 @@ const DigitModule = {
     },
 
     checkStrategy() {
-        if (this.isTrading || !this.isAnalysisRunning || this.tickBuffer.length < 20) return;
+        if (this.isTrading || !this.isAnalysisRunning || this.tickBuffer.length < 25) return;
 
         if (this.checkLimits()) return;
 
@@ -148,9 +156,9 @@ const DigitModule = {
         const pOver = (this.tickBuffer.filter(d => d > 5).length / total) * 100;
         const pUnder = (this.tickBuffer.filter(d => d < 5).length / total) * 100;
         
-        const stakeInput = document.getElementById('d-stake');
-        const stake = stakeInput ? stakeInput.value : 1;
+        const stake = parseFloat(document.getElementById('d-stake')?.value || 1.00);
 
+        // Gatilho de confiança em 70%
         if (pOver >= 70) {
             this.executeTrade('DIGITOVER', stake);
         } else if (pUnder >= 70) {
@@ -160,8 +168,9 @@ const DigitModule = {
 
     executeTrade(type, stake) {
         this.isTrading = true;
-        this.log(`PADRÃO DETECTADO! ENTRANDO EM ${type}...`, "text-green-400 font-bold");
+        this.log(`PADRÃO DETECTADO: ${type} (Over 70%)`, "text-green-400 font-bold");
 
+        // Parâmetros obrigatórios para Digits na Deriv
         const extraParams = { 
             barrier: "5", 
             duration: 1, 
@@ -188,42 +197,35 @@ const DigitModule = {
 
     handleContractResult(profit) {
         this.currentProfit += profit;
-        if (profit > 0) {
-            this.stats.wins++;
-        } else {
-            this.stats.losses++;
-        }
+        if (profit > 0) this.stats.wins++;
+        else this.stats.losses++;
         
         this.updateUI_Stats(profit);
 
-        // Notifica o app principal
         if (typeof app.updateModuleProfit === 'function') {
-            app.moduleProfits['d'] = this.currentProfit;
+            app.updateModuleProfit(profit, 'd');
         }
 
+        // Delay de segurança entre operações de dígitos para evitar sobreposição
         setTimeout(() => {
             this.isTrading = false;
             if (this.isAnalysisRunning) {
-                this.log("RETOMANDO MONITORAMENTO...", "text-gray-500");
+                this.log("RETOMANDO MONITORAMENTO DE TICKS...", "text-gray-500");
             }
-        }, 2000);
+        }, 2500);
     },
 
     checkLimits() {
-        const tpInput = document.getElementById('d-tp');
-        const slInput = document.getElementById('d-sl');
-        if (!tpInput || !slInput) return false;
+        const tp = parseFloat(document.getElementById('d-tp')?.value || 0);
+        const sl = parseFloat(document.getElementById('d-sl')?.value || 0);
 
-        const tp = parseFloat(tpInput.value);
-        const sl = parseFloat(slInput.value);
-
-        if (this.currentProfit >= tp) {
-            this.log(`META DE LUCRO (${tp.toFixed(2)} USD) ALCANÇADA!`, "text-green-500 font-black");
+        if (this.currentProfit >= tp && tp > 0) {
+            this.log(`META ATINGIDA: +${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
             this.analyze();
             return true;
         }
-        if (this.currentProfit <= (sl * -1)) {
-            this.log(`LIMITE DE PERDA (-${sl.toFixed(2)} USD) ATINGIDO!`, "text-red-500 font-black");
+        if (this.currentProfit <= (sl * -1) && sl > 0) {
+            this.log(`STOP LOSS ATINGIDO: ${this.currentProfit.toFixed(2)}`, "text-red-500 font-black");
             this.analyze();
             return true;
         }
@@ -238,12 +240,10 @@ const DigitModule = {
             profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
         }
 
-        const winEl = document.getElementById('d-stat-w');
-        const lossEl = document.getElementById('d-stat-l');
-        if (winEl) winEl.innerText = this.stats.wins;
-        if (lossEl) lossEl.innerText = this.stats.losses;
+        if (document.getElementById('d-stat-w')) document.getElementById('d-stat-w').innerText = this.stats.wins;
+        if (document.getElementById('d-stat-l')) document.getElementById('d-stat-l').innerText = this.stats.losses;
 
         const color = lastProfit > 0 ? "text-green-500" : "text-red-500";
-        this.log(`CONTRATO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
+        this.log(`CONTRATO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)})`, color);
     }
 };
