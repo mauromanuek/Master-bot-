@@ -80,7 +80,11 @@ const DerivAPI = {
         // Traduz o símbolo antes de aplicar (Resolve o erro visual do gráfico)
         const symbolFormatado = this.mapaSimbolos[newSymbol.toUpperCase()] || newSymbol;
         
-        if (this.currentSymbol === symbolFormatado) return;
+        if (this.currentSymbol === symbolFormatado) {
+            // Se for o mesmo símbolo, apenas garante que as velas estão subscritas
+            this.subscribeCandles(this.callbacks['candles']);
+            return;
+        }
         
         this.log(`Trocando ativo: ${this.currentSymbol} -> ${symbolFormatado}`);
         
@@ -98,7 +102,7 @@ const DerivAPI = {
 
         // 3. Pequeno delay para garantir que o servidor processou o 'forget_all'
         setTimeout(() => {
-            // Reinicia subscrições para o novo ativo
+            // Reinicia subscrições para o novo ativo com carga total
             this.subscribeCandles(this.callbacks['candles']);
             
             // Se o módulo de dígitos estiver ativo ou se o app precisar de ticks, subscreve
@@ -111,16 +115,17 @@ const DerivAPI = {
 
     /**
      * Subscreve ao histórico de velas (OHLC)
+     * Atualizado para 100 velas para evitar erro de "Dados Insuficientes" na Engine
      */
     subscribeCandles(callback) {
         if (!this.isAuthorized || !this.currentSymbol) return;
         
-        this.callbacks['candles'] = callback;
+        if (callback) this.callbacks['candles'] = callback;
         
         this.socket.send(JSON.stringify({
             ticks_history: this.currentSymbol,
             adjust_start_time: 1,
-            count: 50,
+            count: 100, // Aumentado de 50 para 100 velas
             end: "latest",
             granularity: 60,
             style: "candles",
@@ -174,8 +179,10 @@ const DerivAPI = {
         }
 
         // --- CANAL 1: Histórico Inicial (Array) ---
-        if (data.msg_type === 'candles' && this.callbacks['candles']) {
-            this.callbacks['candles'](data.candles);
+        if (data.msg_type === 'candles' && data.candles) {
+            if (this.callbacks['candles']) {
+                this.callbacks['candles'](data.candles);
+            }
             
             // Alimenta o analista com os dados iniciais de vela
             if (window.app && app.analista) {
@@ -185,7 +192,7 @@ const DerivAPI = {
         
         // --- CANAL 2: Vela em Formação (OHLC) - Normalização de Dados ---
         else if (data.msg_type === 'ohlc') {
-            if (data.ohlc.symbol === this.currentSymbol && this.callbacks['candles']) {
+            if (data.ohlc.symbol === this.currentSymbol) {
                 const normalizedCandle = {
                     epoch: data.ohlc.open_time,
                     open: data.ohlc.open,
@@ -194,7 +201,9 @@ const DerivAPI = {
                     close: data.ohlc.close
                 };
                 
-                this.callbacks['candles'](normalizedCandle);
+                if (this.callbacks['candles']) {
+                    this.callbacks['candles'](normalizedCandle);
+                }
                 
                 if (window.app && app.analista) {
                     app.analista.adicionarDados(normalizedCandle);
@@ -230,7 +239,6 @@ const DerivAPI = {
             // Atualiza objeto global app
             if (window.app) {
                 app.balance = balanceValue;
-                if (typeof app.updateBalanceUI === 'function') app.updateBalanceUI();
             }
         }
 
@@ -301,4 +309,4 @@ const DerivAPI = {
         const color = type === "error" ? "color: #ff4444" : "color: #00ff88";
         console.log(`%c[DerivAPI] ${msg}`, color);
     }
-};
+}
