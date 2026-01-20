@@ -1,20 +1,77 @@
 import os
 import json
-import requests
+import numpy as np
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
 
 app = Flask(__name__)
-# Configuração de CORS robusta para evitar "Conexão Instável" por bloqueio de segurança
-CORS(app, resources={r"/*": {
-    "origins": "*",
-    "methods": ["POST", "GET", "OPTIONS"],
-    "allow_headers": ["Content-Type", "Authorization"]
-}})
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 LINK_DO_BOT = "https://mauromanuek.github.io/Master-bot-/"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY") 
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+def calcular_sniper_engine(asset, velas, ticks):
+    """
+    Motor Matemático Sniper Scalping 
+    Substitui a IA por Lógica Determinística
+    """
+    if len(velas) < 10:
+        return {"direcao": "NEUTRO", "confianca": 0, "estratégia": "Aguardando Dados", "motivo": "Dados insuficientes"}
+
+    # Extração de vetores numéricos
+    closes = np.array([float(v['close']) for v in velas])
+    highs = np.array([float(v['high']) for v in velas])
+    lows = np.array([float(v['low']) for v in velas])
+    
+    preco_atual = closes[-1]
+    
+    # 1. FILTRO DE TENDÊNCIA (Regressão Simples)
+    x = np.arange(len(closes))
+    slope, _ = np.polyfit(x, closes, 1)
+    tendencia = "ALTA" if slope > 0 else "BAIXA"
+
+    # 2. ZONAS DE MEMÓRIA (Suporte e Resistência)
+    suporte = np.min(lows[:-1])
+    resistencia = np.max(highs[:-1])
+
+    # 3. VOLATILIDADE (Distância entre bandas)
+    range_medio = np.mean(highs - lows)
+    distancia_resistencia = resistencia - preco_atual
+    distancia_suporte = preco_atual - suporte
+
+    # 4. LÓGICA GATILHO SNIPER (Pivô de Retomada)
+    direcao = "NEUTRO"
+    confianca = 0
+    motivo = "Mercado em consolidação ou sem gatilho claro."
+    estrategia = "Sniper Structural"
+
+    # Critério para CALL (Sniper)
+    if tendencia == "ALTA":
+        if preco_atual <= (suporte + (range_medio * 0.5)): # Próximo ao suporte (Pullback)
+            direcao = "CALL"
+            confianca = 85
+            motivo = f"Pullback detectado em tendência de alta. Rejeição em zona {suporte:.2f}."
+        elif preco_atual > resistencia: # Rompimento com força
+            direcao = "CALL"
+            confianca = 70
+            motivo = "Rompimento de pivô de alta confirmado."
+            
+    # Critério para PUT (Sniper)
+    elif tendencia == "BAIXA":
+        if preco_atual >= (resistencia - (range_medio * 0.5)): # Próximo à resistência
+            direcao = "PUT"
+            confianca = 85
+            motivo = f"Reteste de resistência em tendência de baixa na zona {resistencia:.2f}."
+        elif preco_atual < suporte: # Rompimento de fundo
+            direcao = "PUT"
+            confianca = 70
+            motivo = "Rompimento de pivô de baixa confirmado."
+
+    return {
+        "direcao": direcao,
+        "confianca": confianca,
+        "estratégia": estrategia,
+        "motivo": motivo
+    }
 
 @app.route('/')
 def index():
@@ -25,75 +82,25 @@ def analisar():
     if request.method == 'OPTIONS':
         return jsonify({"status": "ok"}), 200
 
-    if not GROQ_API_KEY:
-        return jsonify({"erro": "GROQ_API_KEY não configurada no ambiente"}), 500
+    dados = request.json
+    if not dados:
+        return jsonify({"erro": "Sem dados"}), 400
 
-    dados_brutos = request.json
-    if not dados_brutos:
-        return jsonify({"erro": "Dados brutos não recebidos"}), 400
+    asset = dados.get('asset', 'R_100')
+    velas = dados.get('contexto_velas', [])
+    ticks = dados.get('fluxo_ticks', [])
 
-    asset_name = dados_brutos.get('asset', 'Volatility Index')
+    # Substituição da IA pela Engine Sniper
+    resultado = calcular_sniper_engine(asset, velas, ticks)
 
-    # PROMPT DE ENGENHARIA CIRÚRGICA: Foco em estabilidade e saída JSON rígida
-    payload = {
-        "model": "llama-3.3-70b-versatile",
-        "messages": [
-            {
-                "role": "system", 
-                "content": (
-                    f"Você é um motor de execução algorítmico para {asset_name}. "
-                    "Analise rigorosamente Price Action, Momentum e Fluxo de Ticks. "
-                    "Decida: CALL, PUT ou NEUTRO. "
-                    "Não ignore suportes/resistências evidentes no histórico de velas. "
-                    "RESPOSTA OBRIGATÓRIA EM JSON PURO: "
-                    '{"direcao": "CALL"|"PUT"|"NEUTRO", "confianca": 0-100, "estratégia": "nome", "motivo": "curto"}'
-                )
-            },
-            {
-                "role": "user", 
-                "content": f"DATA: {json.dumps(dados_brutos)}"
+    # Mantemos o formato de saída para não quebrar o AnaliseGeral.js
+    return jsonify({
+        "choices": [{
+            "message": {
+                "content": json.dumps(resultado)
             }
-        ],
-        "temperature": 0.2, # Reduzido para máxima velocidade e consistência de formato
-        "max_tokens": 200,
-        "response_format": {"type": "json_object"}
-    }
-    
-    try:
-        # Timeout de 15s para evitar que a Vercel mate a conexão prematuramente
-        response = requests.post(
-            GROQ_URL, 
-            json=payload, 
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json"
-            }, 
-            timeout=15
-        )
-        
-        # Tratamento de erro da API Groq antes de processar o JSON
-        if response.status_code != 200:
-            return jsonify({
-                "erro": f"Groq API Error {response.status_code}",
-                "detalhes": response.text
-            }), response.status_code
-
-        res_data = response.json()
-        
-        # Verificação de segurança da estrutura de resposta
-        if 'choices' in res_data and len(res_data['choices']) > 0:
-            content_str = res_data['choices'][0]['message']['content']
-            # Garante que o retorno seja o objeto JSON esperado
-            return jsonify({
-                "choices": [{"message": {"content": content_str}}]
-            })
-        
-        return jsonify({"erro": "Resposta vazia da IA"}), 500
-
-    except requests.exceptions.Timeout:
-        return jsonify({"erro": "Timeout: A IA demorou muito para responder"}), 504
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+        }]
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
