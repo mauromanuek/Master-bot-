@@ -8,6 +8,20 @@ const DerivAPI = {
     isSubscribing: false,
     _pendingPrefix: 'm', // Prefixo padrão
 
+    // MAPA DE TRADUÇÃO TÉCNICA (Essencial para resolver "Símbolo Inválido")
+    mapaSimbolos: {
+        "VOLATILITY 10 INDEX": "R_10",
+        "VOLATILITY 25 INDEX": "R_25",
+        "VOLATILITY 50 INDEX": "R_50",
+        "VOLATILITY 75 INDEX": "R_75",
+        "VOLATILITY 100 INDEX": "R_100",
+        "BOOM 300 INDEX": "B_300",
+        "CRASH 300 INDEX": "C_300",
+        "BOOM 500 INDEX": "B_500",
+        "CRASH 500 INDEX": "C_500",
+        "STEP INDEX": "STPINDEX"
+    },
+
     /**
      * Inicializa a conexão e configura os listeners globais
      */
@@ -61,20 +75,25 @@ const DerivAPI = {
      * Gerencia a troca de ativo limpando subscrições anteriores
      */
     changeSymbol(newSymbol) {
-        if (!newSymbol || this.currentSymbol === newSymbol) return;
+        if (!newSymbol) return;
         
-        this.log(`Trocando ativo: ${this.currentSymbol} -> ${newSymbol}`);
+        // Traduz o símbolo antes de aplicar (Resolve o erro visual do gráfico)
+        const symbolFormatado = this.mapaSimbolos[newSymbol.toUpperCase()] || newSymbol;
+        
+        if (this.currentSymbol === symbolFormatado) return;
+        
+        this.log(`Trocando ativo: ${this.currentSymbol} -> ${symbolFormatado}`);
         
         // 1. Limpa todas as subscrições ativas para evitar overlap de dados
         this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
 
         // 2. Atualiza estado global
-        this.currentSymbol = newSymbol;
+        this.currentSymbol = symbolFormatado;
         
         if (window.app) {
             if (app.analista) app.analista.limparHistorico();
-            app.currentAsset = newSymbol; 
+            app.currentAsset = symbolFormatado; 
         }
 
         // 3. Pequeno delay para garantir que o servidor processou o 'forget_all'
@@ -84,6 +103,9 @@ const DerivAPI = {
             
             // Se o módulo de dígitos estiver ativo ou se o app precisar de ticks, subscreve
             this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
+            
+            // DISPARA EVENTO PARA O GRÁFICO ATUALIZAR (Resolve o erro "Símbolo Inválido")
+            document.dispatchEvent(new CustomEvent('symbol_changed', { detail: symbolFormatado }));
         }, 500);
     },
 
@@ -269,7 +291,9 @@ const DerivAPI = {
      */
     subscribeTicks(symbol) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
+            // Garante tradução antes de subscrever ticks avulsos
+            const sym = this.mapaSimbolos[symbol.toUpperCase()] || symbol;
+            this.socket.send(JSON.stringify({ ticks: sym, subscribe: 1 }));
         }
     },
 
