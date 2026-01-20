@@ -4,15 +4,15 @@ const AutoModule = {
     currentProfit: 0,
     stats: { wins: 0, losses: 0, total: 0 },
     _handler: null,
-    _cycleTimeout: null, // Controle para evitar múltiplas execuções
+    _cycleTimeout: null,
 
     render() {
         return `
             <div class="space-y-4 max-w-md mx-auto">
                 <div class="flex justify-between items-center">
                     <div>
-                        <h2 class="text-xl font-bold text-purple-500 italic uppercase leading-none">Auto Scalper Pro</h2>
-                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">IA-Driven Engine</span>
+                        <h2 class="text-xl font-bold text-purple-500 italic uppercase leading-none">Auto Scalper Sniper</h2>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Quantitative Engine V1</span>
                     </div>
                     <div id="a-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
@@ -32,10 +32,10 @@ const AutoModule = {
                     </div>
                 </div>
 
-                <button id="btn-a-toggle" onclick="AutoModule.toggle()" class="w-full py-4 bg-purple-600 hover:bg-purple-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Robô</button>
+                <button id="btn-a-toggle" onclick="AutoModule.toggle()" class="w-full py-4 bg-purple-600 hover:bg-purple-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Operação Sniper</button>
                 
                 <div id="a-status" class="bg-black p-3 rounded-xl h-40 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> [SISTEMA] Aguardando comando para o ativo ${app.currentAsset}...</p>
+                    <p class="text-gray-600 italic">> [SISTEMA] Aguardando gatilho técnico para ${app.currentAsset}...</p>
                 </div>
                 
                 <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 flex justify-between items-center shadow-xl">
@@ -66,20 +66,20 @@ const AutoModule = {
         const indicator = document.getElementById('a-indicator');
         
         if (this.isRunning) {
-            btn.innerText = "DESATIVAR ROBÔ";
+            btn.innerText = "PARAR OPERAÇÃO";
             btn.classList.replace('bg-purple-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-purple-500');
             indicator.classList.add('animate-pulse');
-            this.log(`MODO AUTOMÁTICO ATIVADO EM ${app.currentAsset}`, "text-purple-400 font-bold");
+            this.log(`MODO SNIPER ATIVADO EM ${app.currentAsset}`, "text-purple-400 font-bold");
             this.setupListener(); 
             this.runCycle();
         } else {
             if (this._cycleTimeout) clearTimeout(this._cycleTimeout);
-            btn.innerText = "INICIAR ROBÔ";
+            btn.innerText = "INICIAR OPERAÇÃO SNIPER";
             btn.classList.replace('bg-red-600', 'bg-purple-600');
             indicator.classList.replace('bg-purple-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
-            this.log("SISTEMA PAUSADO PELO USUÁRIO", "text-yellow-600");
+            this.log("ROBÔ DESATIVADO", "text-yellow-600");
             this.isTrading = false;
         }
     },
@@ -100,46 +100,42 @@ const AutoModule = {
         if (!this.isRunning || this.isTrading) return;
         if (this.checkLimits()) return;
 
-        const assetAtStart = app.currentAsset; // Snapshot do ativo no início da análise
-        this.log(`IA ANALISANDO ${assetAtStart}...`, "text-blue-400");
+        const assetAtStart = app.currentAsset;
         
         try {
-            const veredito = await app.analista.obterVereditoCompleto(assetAtStart);
+            // A engine agora é ultra-rápida, então removemos logs de "Analisando..." para não poluir
+            const veredito = await app.analista.obterVereditoCompleto();
             
-            // Validações pós-análise: O bot ainda está rodando? O ativo ainda é o mesmo?
             if (!this.isRunning || this.isTrading || !veredito) {
-                this.scheduleNext(3000);
+                this.scheduleNext(1000); // Tenta novamente em 1s
                 return;
             }
 
-            if (app.currentAsset !== assetAtStart) {
-                this.log("TROCA DE ATIVO DETECTADA. REINICIANDO CICLO.", "text-yellow-500");
-                this.scheduleNext(1000);
-                return;
-            }
-
-            if ((veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
+            // Gatilho Sniper: Confiança mínima para o automático é 70%
+            if ((veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 70) {
                 const stake = document.getElementById('a-stake')?.value || 10;
                 
-                this.log(`SINAL IA: ${veredito.direcao} (${veredito.confianca}%) - ${veredito.estratégia}`, "text-green-500 font-bold");
+                this.log(`ALVO DETECTADO: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
+                this.log(`MOTIVO: ${veredito.motivo}`, "text-gray-500 text-[9px]");
+                
                 this.isTrading = true;
                 
                 DerivAPI.buy(veredito.direcao, stake, 'a', (res) => {
                     if (res.error) {
-                        this.log(`ERRO NA COMPRA: ${res.error.message}`, "text-red-500");
+                        this.log(`ERRO DE EXECUÇÃO: ${res.error.message}`, "text-red-500");
                         this.isTrading = false;
-                        this.scheduleNext(3000);
+                        this.scheduleNext(2000);
                     }
                 });
             } else {
-                this.log(`SINAL INSUFICIENTE (${veredito.confianca}%). AGUARDANDO...`, "text-gray-600 italic");
-                this.scheduleNext(4000);
+                // Em modo automático, não logamos "sinal insuficiente" para economizar memória e performance
+                this.scheduleNext(1000); 
             }
 
         } catch (e) {
-            this.log(`ERRO DE COMUNICAÇÃO: ${e.message}`, "text-orange-500");
+            this.log(`FALHA NA ENGINE: ${e.message}`, "text-orange-500");
             this.isTrading = false;
-            this.scheduleNext(5000);
+            this.scheduleNext(3000);
         }
     },
 
@@ -160,13 +156,9 @@ const AutoModule = {
         
         this.updateUI(profit);
 
-        if (typeof app.updateModuleProfit === 'function') {
-            app.moduleProfits['a'] = this.currentProfit;
-        }
-
         if (this.isRunning) {
-            this.log(`CICLO FINALIZADO. REINICIANDO EM 2s...`, "text-gray-500");
-            this.scheduleNext(2000);
+            // Reduzido tempo de espera pós-operação para aproveitar sequências (Trends)
+            this.scheduleNext(1500);
         }
     },
 
@@ -175,12 +167,12 @@ const AutoModule = {
         const sl = parseFloat(document.getElementById('a-sl')?.value || 0);
 
         if (this.currentProfit >= tp && tp > 0) {
-            this.log(`META DE LUCRO (${tp.toFixed(2)}) ATINGIDA!`, "text-green-500 font-black");
+            this.log(`TAKE PROFIT ATINGIDO: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
         if (this.currentProfit <= (sl * -1) && sl > 0) {
-            this.log(`STOP LOSS (-${sl.toFixed(2)}) ATINGIDO!`, "text-red-500 font-black");
+            this.log(`STOP LOSS ATINGIDO: -$${Math.abs(this.currentProfit).toFixed(2)}`, "text-red-500 font-black");
             this.toggle();
             return true;
         }
@@ -199,6 +191,12 @@ const AutoModule = {
         if (document.getElementById('a-stat-l')) document.getElementById('a-stat-l').innerText = this.stats.losses;
 
         const color = lastProfit > 0 ? "text-green-500" : "text-red-500";
-        this.log(`RESULTADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
+        this.log(`RESULTADO: ${lastProfit > 0 ? 'PROFIT' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
+        
+        // Sincroniza com o rodapé global do app
+        if (typeof app.updateModuleProfit === 'function') {
+            app.stats.wins = this.stats.wins; // Sincroniza estatísticas globais
+            app.stats.losses = this.stats.losses;
+        }
     }
 };
