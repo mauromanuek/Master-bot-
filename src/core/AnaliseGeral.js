@@ -1,6 +1,7 @@
 class AnaliseGeral {
     constructor(backendUrl) {
-        this.backendUrl = backendUrl || "https://master-bot-beta.vercel.app/analisar";
+        // Ajustado para apontar para o seu novo endpoint Flask determinístico
+        this.backendUrl = backendUrl || "http://localhost:5000/analisar"; 
         this.historicoVelas = [];
         this.ultimosTicks = [];
         this._analisando = false;
@@ -52,34 +53,45 @@ class AnaliseGeral {
     }
 
     async obterVereditoCompleto() {
-        // Reduzido para 5 velas para aumentar a sensibilidade do Scalping Sniper
-        if (this._analisando || this.historicoVelas.length < 5) return null;
+        // Sniper exige pelo menos 20 velas para calcular Tendência e Zonas de Memória
+        if (this._analisando || this.historicoVelas.length < 20) return null;
 
         const assetName = window.app ? app.currentAsset : "R_100";
         
+        // Payload agora focado em dados brutos para a lógica determinística do Python
         const payload = {
             asset: assetName,
             fluxo_ticks: this.ultimosTicks,
-            contexto_velas: this.historicoVelas.slice(-20) // Enviamos mais contexto para cálculo de tendência
+            contexto_velas: this.historicoVelas.slice(-30), // Enviamos contexto para Médias Móveis e Suporte/Resistência
+            indicadores: this.calcularIndicadoresLocais() // Opcional: pré-processamento no JS
         };
 
         this._analisando = true;
         try {
-            // Chamada direta para a Engine Determinística
             const veredito = await this.chamarEngineSniper(payload);
             this._analisando = false;
             return veredito;
         } catch (e) {
             console.error("[Sniper Engine] Falha no processamento:", e);
             this._analisando = false;
-            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro de processamento local" };
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro de conexão com a Engine" };
         }
     }
 
+    // Função auxiliar para otimizar o trabalho do Backend
+    calcularIndicadoresLocais() {
+        if (this.historicoVelas.length < 14) return {};
+        const closes = this.historicoVelas.slice(-14).map(v => v.close);
+        // Exemplo simples de retorno de RSI local para o backend
+        return {
+            ultimo_fechamento: closes[closes.length - 1],
+            variacao: closes[closes.length - 1] - closes[0]
+        };
+    }
+
     async chamarEngineSniper(payload) {
-        // Reduzimos o timeout drasticamente, pois a lógica técnica é instantânea (diferente da IA)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); 
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // Sniper precisa de resposta em < 3s
 
         try {
             const response = await fetch(this.backendUrl, {
@@ -92,18 +104,15 @@ class AnaliseGeral {
             clearTimeout(timeoutId);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const data = await response.json();
-            
-            // O backend agora retorna o JSON estruturado diretamente no content
-            const content = typeof data.choices[0].message.content === 'string' 
-                ? JSON.parse(data.choices[0].message.content) 
-                : data.choices[0].message.content;
+            // REMOVIDO: Lógica de data.choices[0] (IA)
+            // ADICIONADO: Leitura direta do JSON determinístico
+            const content = await response.json();
             
             return {
                 direcao: (content.direcao || "NEUTRO").toUpperCase(),
                 confianca: parseInt(content.confianca || 0),
-                estratégia: content.estratégia || "Sniper Technical",
-                motivo: content.motivo || "Análise estrutural processada",
+                estratégia: content.estratégia || "Sniper Quant",
+                motivo: content.motivo || "Análise técnica estrutural",
                 asset: payload.asset
             };
         } catch (e) {
