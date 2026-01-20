@@ -1,7 +1,7 @@
 class AnaliseGeral {
     constructor(backendUrl) {
-        // Ajustado para apontar para o seu novo endpoint Flask determinístico
-        this.backendUrl = backendUrl || "http://localhost:5000/analisar"; 
+        // Link atualizado para o seu servidor no Render com o endpoint /analisar
+        this.backendUrl = backendUrl || "https://master-bot-hpt5.onrender.com/analisar"; 
         this.historicoVelas = [];
         this.ultimosTicks = [];
         this._analisando = false;
@@ -91,7 +91,8 @@ class AnaliseGeral {
 
     async chamarEngineSniper(payload) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // Sniper precisa de resposta em < 3s
+        // Aumentamos para 10s no Render pois o plano grátis pode demorar a responder (Cold Start)
+        const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
         try {
             const response = await fetch(this.backendUrl, {
@@ -104,19 +105,27 @@ class AnaliseGeral {
             clearTimeout(timeoutId);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            // REMOVIDO: Lógica de data.choices[0] (IA)
-            // ADICIONADO: Leitura direta do JSON determinístico
-            const content = await response.json();
+            const data = await response.json();
+            
+            // Lógica para extrair o conteúdo de choices[0].message.content (Padrão do seu Python)
+            let resultadoFinal;
+            if (data.choices && data.choices[0] && data.choices[0].message) {
+                // O Python envia o resultado como uma STRING JSON dentro de content
+                resultadoFinal = JSON.parse(data.choices[0].message.content);
+            } else {
+                resultadoFinal = data; // Fallback caso o Python mude o formato
+            }
             
             return {
-                direcao: (content.direcao || "NEUTRO").toUpperCase(),
-                confianca: parseInt(content.confianca || 0),
-                estratégia: content.estratégia || "Sniper Quant",
-                motivo: content.motivo || "Análise técnica estrutural",
+                direcao: (resultadoFinal.direcao || "NEUTRO").toUpperCase(),
+                confianca: parseInt(resultadoFinal.confianca || 0),
+                estratégia: resultadoFinal.estratégia || "Sniper Quant",
+                motivo: resultadoFinal.motivo || "Análise técnica estrutural",
                 asset: payload.asset
             };
         } catch (e) {
             clearTimeout(timeoutId);
+            console.warn("[Sniper Engine] Engine offline ou lenta. Verifique o Render.");
             throw e;
         }
     }
