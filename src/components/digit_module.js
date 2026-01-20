@@ -1,6 +1,6 @@
 const DigitModule = {
     tickBuffer: [],
-    maxTicks: 50,
+    maxTicks: 25, // Reduzido para maior sensibilidade a micro-tendências
     isAnalysisRunning: false,
     isTrading: false,
     currentProfit: 0,
@@ -13,7 +13,9 @@ const DigitModule = {
                 <div class="flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-bold text-yellow-500 italic uppercase leading-none">Digit Sniper</h2>
-                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: <span id="d-current-asset">${app.currentAsset}</span></span>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">
+                            Monitorando: <span id="d-current-asset" class="text-yellow-600">${app.currentAsset || '---'}</span>
+                        </span>
                     </div>
                     <div id="d-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
@@ -25,27 +27,27 @@ const DigitModule = {
                     </div>
                     <div>
                         <label class="text-[9px] text-green-500 uppercase font-bold tracking-wider">T.Profit</label>
-                        <input id="d-tp" type="number" value="5" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
+                        <input id="d-tp" type="number" value="5.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
                     </div>
                     <div>
                         <label class="text-[9px] text-red-500 uppercase font-bold tracking-wider">S.Loss</label>
-                        <input id="d-sl" type="number" value="10" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-red-500 transition-colors">
+                        <input id="d-sl" type="number" value="10.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-red-500 transition-colors">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <div id="box-over" class="bg-gray-900 p-4 rounded-2xl border-2 border-transparent text-center transition-all duration-500">
-                        <p class="text-[10px] text-gray-400 uppercase font-bold">Digit Over (5)</p>
+                    <div id="box-over" class="bg-gray-900 p-4 rounded-2xl border-2 border-transparent text-center transition-all duration-300">
+                        <p class="text-[10px] text-gray-400 uppercase font-bold">Over 5</p>
                         <p id="perc-over" class="text-2xl font-black text-white">0%</p>
-                        <div class="w-full bg-gray-800 h-1 mt-2 rounded-full overflow-hidden">
-                            <div id="bar-over" class="bg-yellow-500 h-full transition-all" style="width: 0%"></div>
+                        <div class="w-full bg-gray-800 h-1.5 mt-2 rounded-full overflow-hidden">
+                            <div id="bar-over" class="bg-yellow-500 h-full transition-all duration-500" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div id="box-under" class="bg-gray-900 p-4 rounded-2xl border-2 border-transparent text-center transition-all duration-500">
-                        <p class="text-[10px] text-gray-400 uppercase font-bold">Digit Under (5)</p>
+                    <div id="box-under" class="bg-gray-900 p-4 rounded-2xl border-2 border-transparent text-center transition-all duration-300">
+                        <p class="text-[10px] text-gray-400 uppercase font-bold">Under 5</p>
                         <p id="perc-under" class="text-2xl font-black text-white">0%</p>
-                        <div class="w-full bg-gray-800 h-1 mt-2 rounded-full overflow-hidden">
-                            <div id="bar-under" class="bg-blue-500 h-full transition-all" style="width: 0%"></div>
+                        <div class="w-full bg-gray-800 h-1.5 mt-2 rounded-full overflow-hidden">
+                            <div id="bar-under" class="bg-blue-500 h-full transition-all duration-500" style="width: 0%"></div>
                         </div>
                     </div>
                 </div>
@@ -53,29 +55,9 @@ const DigitModule = {
                 <button id="btn-d-toggle" onclick="DigitModule.analyze()" class="w-full py-4 bg-yellow-600 hover:bg-yellow-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Operação Digits</button>
                 
                 <div id="d-status" class="bg-black p-3 rounded-xl h-24 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> [SISTEMA] Aguardando leitura de mercado para ${app.currentAsset}...</p>
-                </div>
-
-                <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 flex justify-between items-center shadow-xl">
-                    <div>
-                        <p class="text-[9px] text-gray-500 uppercase font-bold">Lucro do Módulo</p>
-                        <p id="d-val-profit" class="text-xl font-black text-gray-600">0.00 USD</p>
-                    </div>
-                    <div class="text-right text-[10px] font-bold font-mono space-y-1 bg-black/40 p-2 rounded-lg">
-                        <p class="text-green-500">WINS: <span id="d-stat-w">0</span></p>
-                        <p class="text-red-500">LOSSES: <span id="d-stat-l">0</span></p>
-                    </div>
+                    <p class="text-gray-600 italic">> Aguardando sinal...</p>
                 </div>
             </div>`;
-    },
-
-    log(msg, color = "text-gray-400") {
-        const status = document.getElementById('d-status');
-        if (status) {
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            status.innerHTML += `<p class="${color}">[${time}] ${msg}</p>`;
-            status.scrollTop = status.scrollHeight;
-        }
     },
 
     analyze() {
@@ -88,40 +70,33 @@ const DigitModule = {
             btn.classList.replace('bg-yellow-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-yellow-500');
             indicator.classList.add('animate-pulse');
-            
             this.tickBuffer = [];
-            this.log(`MONITORANDO ÚLTIMO DÍGITO EM ${app.currentAsset}`, "text-yellow-400 font-bold");
             this.setupListeners();
+            this.log(`ANÁLISE DE DÍGITOS INICIADA`, "text-yellow-400 font-bold");
         } else {
             btn.innerText = "Iniciar Operação Digits";
             btn.classList.replace('bg-red-600', 'bg-yellow-600');
             indicator.classList.replace('bg-yellow-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
             this.isTrading = false;
-            this.log("MODO DÍGITOS DESATIVADO", "text-yellow-600");
         }
     },
 
     processTick(tickData) {
-        if (!this.isAnalysisRunning) return;
+        if (!this.isAnalysisRunning || this.isTrading) return;
 
-        // Garantir que estamos analisando o ativo atual do app
-        if (tickData.symbol !== app.currentAsset) return;
-
-        // Extração do dígito final do preço (quote)
-        const quoteStr = tickData.quote.toString();
-        const lastDigit = parseInt(quoteStr.charAt(quoteStr.length - 1));
+        // Extrai o último dígito
+        const quote = tickData.quote.toString();
+        const lastDigit = parseInt(quote.slice(-1));
         
-        if (!isNaN(lastDigit)) {
-            this.tickBuffer.push(lastDigit);
-            if (this.tickBuffer.length > this.maxTicks) this.tickBuffer.shift();
-            
-            this.updateUI_Realtime();
-            this.checkStrategy();
-        }
+        this.tickBuffer.push(lastDigit);
+        if (this.tickBuffer.length > this.maxTicks) this.tickBuffer.shift();
+        
+        this.updateUI();
+        this.checkEntry();
     },
 
-    updateUI_Realtime() {
+    updateUI() {
         const total = this.tickBuffer.length;
         if (total < 5) return;
 
@@ -131,120 +106,64 @@ const DigitModule = {
         const pOver = Math.round((over5 / total) * 100);
         const pUnder = Math.round((under5 / total) * 100);
 
-        // Atualiza números e barras
         document.getElementById('perc-over').innerText = pOver + "%";
         document.getElementById('perc-under').innerText = pUnder + "%";
         document.getElementById('bar-over').style.width = pOver + "%";
         document.getElementById('bar-under').style.width = pUnder + "%";
 
-        // Alerta visual de zona de entrada
-        const boxOver = document.getElementById('box-over');
-        const boxUnder = document.getElementById('box-under');
-        
-        boxOver.style.borderColor = pOver >= 65 ? '#eab308' : 'transparent';
-        boxUnder.style.borderColor = pUnder >= 65 ? '#3b82f6' : 'transparent';
+        // Feedback visual de pressão estatística
+        document.getElementById('box-over').style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
+        document.getElementById('box-under').style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
     },
 
-    checkStrategy() {
-        // Mínimo de 20 ticks para uma análise estatística válida
-        if (this.isTrading || !this.isAnalysisRunning || this.tickBuffer.length < 20) return;
-        if (this.checkLimits()) return;
+    checkEntry() {
+        if (this.tickBuffer.length < 20 || this.isTrading) return;
 
         const total = this.tickBuffer.length;
         const pOver = (this.tickBuffer.filter(d => d > 5).length / total) * 100;
         const pUnder = (this.tickBuffer.filter(d => d < 5).length / total) * 100;
         
-        const stake = parseFloat(document.getElementById('d-stake')?.value || 1.00);
+        const stake = document.getElementById('d-stake').value;
 
-        // Gatilho Sniper de 75% de probabilidade estatística
+        // Estratégia: Se um lado domina 75% dos últimos 25 ticks, entramos a favor da tendência
         if (pOver >= 75) {
-            this.executeTrade('DIGITOVER', stake);
+            this.execute('DIGITOVER', stake);
         } else if (pUnder >= 75) {
-            this.executeTrade('DIGITUNDER', stake);
+            this.execute('DIGITUNDER', stake);
         }
     },
 
-    executeTrade(type, stake) {
+    execute(type, stake) {
         this.isTrading = true;
-        this.log(`EXECUTANDO: ${type} (Prob: 75%+)`, "text-green-400 font-bold");
+        this.log(`ENTRADA ESTATÍSTICA: ${type}`, "text-green-400 font-bold");
 
-        // Parâmetros para contrato de dígito (Previsão: 5)
-        const extraParams = { 
-            barrier: "5", 
-            duration: 1, 
-            duration_unit: 't' 
-        };
-
+        const params = { barrier: "5", duration: 1, duration_unit: 't' };
+        
         DerivAPI.buy(type, stake, 'd', (res) => {
             if (res.error) {
                 this.log(`ERRO: ${res.error.message}`, "text-red-500");
                 this.isTrading = false;
             }
-        }, extraParams);
-    },
-
-    setupListeners() {
-        if (this._handler) document.removeEventListener('contract_finished', this._handler);
-        this._handler = (e) => {
-            if (e.detail && e.detail.prefix === 'd') {
-                this.handleContractResult(e.detail.profit);
-            }
-        };
-        document.addEventListener('contract_finished', this._handler);
+        }, params);
     },
 
     handleContractResult(profit) {
         this.currentProfit += profit;
+        const color = profit > 0 ? "text-green-400" : "text-red-400";
+        this.log(`RESULTADO: ${profit > 0 ? 'WIN' : 'LOSS'} (${profit.toFixed(2)})`, color);
         
-        // Atualiza estatísticas do módulo
-        if (profit > 0) this.stats.wins++;
-        else this.stats.losses++;
-        
-        // Sincronização com o núcleo do APP (Saldo e Footer)
-        if (typeof app.updateModuleProfit === 'function') {
-            app.updateModuleProfit(profit, 'd');
-        }
-
-        this.updateModuleUI(profit);
-
-        // Aguarda 3 segundos para limpar o buffer e reiniciar a leitura
+        // Pequena pausa para o mercado "respirar" antes da próxima leitura
         setTimeout(() => {
             this.isTrading = false;
-            if (this.isAnalysisRunning) {
-                this.log("ESTATÍSTICA RESETADA. REINICIANDO LEITURA...", "text-gray-500");
-            }
-        }, 3000);
+            this.tickBuffer = []; // Limpa para nova amostragem pura
+        }, 2000);
     },
 
-    checkLimits() {
-        const tp = parseFloat(document.getElementById('d-tp')?.value || 0);
-        const sl = parseFloat(document.getElementById('d-sl')?.value || 0);
-
-        if (this.currentProfit >= tp && tp > 0) {
-            this.log(`META DO DIA ALCANÇADA!`, "text-green-500 font-black");
-            this.analyze();
-            return true;
+    log(msg, color = "text-gray-400") {
+        const status = document.getElementById('d-status');
+        if (status) {
+            status.innerHTML += `<p class="${color}">> ${msg}</p>`;
+            status.scrollTop = status.scrollHeight;
         }
-        if (this.currentProfit <= (sl * -1) && sl > 0) {
-            this.log(`LIMITE DE PERDA ATINGIDO!`, "text-red-500 font-black");
-            this.analyze();
-            return true;
-        }
-        return false;
-    },
-
-    updateModuleUI(lastProfit) {
-        const profitEl = document.getElementById('d-val-profit');
-        if (profitEl) {
-            const prefix = this.currentProfit >= 0 ? '+' : '';
-            profitEl.innerText = `${prefix}${this.currentProfit.toFixed(2)} USD`;
-            profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
-        }
-
-        document.getElementById('d-stat-w').innerText = this.stats.wins;
-        document.getElementById('d-stat-l').innerText = this.stats.losses;
-
-        const color = lastProfit > 0 ? "text-green-500" : "text-red-500";
-        this.log(`FIM DE CONTRATO: ${lastProfit > 0 ? 'LUCRO' : 'PERDA'} (${lastProfit.toFixed(2)})`, color);
     }
 };
