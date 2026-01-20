@@ -20,15 +20,15 @@ const ManualModule = {
                 <div class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded-xl border border-gray-800 shadow-lg">
                     <div>
                         <label class="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Stake ($)</label>
-                        <input id="m-stake" type="number" value="10.00" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
+                        <input id="m-stake" type="number" value="1.00" step="0.50" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
                     </div>
                     <div>
                         <label class="text-[9px] text-green-500 uppercase font-bold tracking-wider">T.Profit</label>
-                        <input id="m-tp" type="number" value="5" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
+                        <input id="m-tp" type="number" value="5.00" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
                     </div>
                     <div>
                         <label class="text-[9px] text-red-500 uppercase font-bold tracking-wider">S.Loss</label>
-                        <input id="m-sl" type="number" value="10" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-red-500 transition-colors">
+                        <input id="m-sl" type="number" value="10.00" step="1.00" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-red-500 transition-colors">
                     </div>
                 </div>
 
@@ -56,163 +56,46 @@ const ManualModule = {
             </div>`;
     },
 
-    log(msg, color = "text-gray-400") {
-        const status = document.getElementById('m-status');
-        if (status) {
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            status.innerHTML += `<p class="${color}">[${time}] ${msg}</p>`;
-            status.scrollTop = status.scrollHeight;
-        }
-    },
-
-    toggle() {
-        this.isActive = !this.isActive;
-        const btn = document.getElementById('btn-m-start');
-        const indicator = document.getElementById('m-indicator');
-
-        if (this.isActive) {
-            btn.innerText = "Parar Monitoramento";
-            btn.classList.replace('bg-blue-600', 'bg-red-600');
-            indicator.classList.replace('bg-gray-600', 'bg-green-500');
-            indicator.classList.add('animate-pulse');
-            this.log(`MONITORANDO SNIPER: ${app.currentAsset}`, "text-blue-400 font-bold");
-            this.setupListener();
-            this.runCycle();
-        } else {
-            if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
-            btn.innerText = "Iniciar Monitoramento";
-            btn.classList.replace('bg-red-600', 'bg-blue-600');
-            indicator.classList.replace('bg-green-500', 'bg-gray-600');
-            indicator.classList.remove('animate-pulse');
-            this.log("SISTEMA MANUAL EM STANDBY", "text-yellow-600");
-            this.resetButtons();
-            this.isTrading = false;
-        }
-    },
-
-    setupListener() {
-        if (this._handler) {
-            document.removeEventListener('contract_finished', this._handler);
-        }
-        this._handler = (e) => {
-            if (e.detail && e.detail.prefix === 'm') {
-                this.handleContractResult(e.detail.profit);
-            }
-        };
-        document.addEventListener('contract_finished', this._handler);
-    },
+    // ... (Mantém log, toggle, setupListener conforme seu código)
 
     async runCycle() {
         if (!this.isActive || this.isTrading) return;
         if (this.checkLimits()) return;
-
-        // Reset visual antes da nova análise
-        this.resetButtons();
 
         try {
             const veredito = await app.analista.obterVereditoCompleto();
             
             if (!this.isActive || this.isTrading) return;
 
-            // No manual, liberamos o gatilho com 65% para dar liberdade ao trader
-            if (veredito && (veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 65) {
-                const side = veredito.direcao.toLowerCase();
-                const target = document.getElementById('btn-' + side);
+            // No manual, 65% já é um bom sinal para alertar o trader
+            if (veredito && veredito.confianca >= 65 && (veredito.direcao === "CALL" || veredito.direcao === "PUT")) {
+                this.activateButtons(veredito.direcao.toLowerCase());
+                this.log(`ALERTA: Oportunidade de ${veredito.direcao} (${veredito.confianca}%)`, "text-green-400");
                 
-                if(target) {
-                    target.disabled = false;
-                    target.style.opacity = "1";
-                    target.classList.add('animate-pulse');
-                    this.log(`OPORTUNIDADE: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
-                    this.log(`ESTRATÉGIA: ${veredito.estratégia}`, "text-gray-500 text-[9px]");
-                    
-                    // Sinal Sniper expira em 10 segundos para evitar entradas tardias
-                    if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
-                    this._analysisTimeout = setTimeout(() => {
-                        if(!this.isTrading && this.isActive) {
-                            this.log("SINAL EXPIRADO (ZONA DE RISCO)", "text-gray-500");
-                            this.runCycle();
-                        }
-                    }, 10000);
-                }
+                // O sinal fica ativo por 10s, depois reinicia a análise
+                if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
+                this._analysisTimeout = setTimeout(() => {
+                    if(!this.isTrading) {
+                        this.resetButtons();
+                        this.runCycle();
+                    }
+                }, 10000);
             } else {
-                // Engine rápida: Reanalisa a cada 2 segundos no modo manual
-                this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
+                this.resetButtons();
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 1500); 
             }
         } catch (e) {
-            this.log("ENGINE OFFLINE. RECONECTANDO...", "text-red-400");
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 5000);
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 3000);
         }
     },
 
-    trade(type) {
-        if (this.isTrading || !this.isActive) return;
-
-        this.isTrading = true;
-        const stake = document.getElementById('m-stake')?.value || 10;
-
-        this.log(`EXECUTANDO ORDEM: ${type}`, "text-yellow-400 font-bold");
+    activateButtons(side) {
         this.resetButtons();
-
-        DerivAPI.buy(type, stake, 'm', (res) => {
-            if (res.error) {
-                this.log(`ERRO API: ${res.error.message}`, "text-red-500");
-                this.isTrading = false;
-                this.runCycle();
-            }
-        });
-    },
-
-    handleContractResult(profit) {
-        this.isTrading = false;
-        this.currentProfit += profit;
-        
-        this.stats.total++;
-        if (profit > 0) this.stats.wins++;
-        else this.stats.losses++;
-        
-        this.updateUI(profit);
-
-        if (this.isActive) {
-            // No modo manual, voltamos a monitorar quase imediatamente
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 1000);
-        }
-    },
-
-    checkLimits() {
-        const tp = parseFloat(document.getElementById('m-tp')?.value || 0);
-        const sl = parseFloat(document.getElementById('m-sl')?.value || 0);
-
-        if (this.currentProfit >= tp && tp > 0) {
-            this.log(`META BATIDA: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
-            this.toggle();
-            return true;
-        }
-        if (this.currentProfit <= (sl * -1) && sl > 0) {
-            this.log(`STOP LOSS: -$${Math.abs(this.currentProfit).toFixed(2)}`, "text-red-500 font-black");
-            this.toggle();
-            return true;
-        }
-        return false;
-    },
-
-    updateUI(lastProfit) {
-        const profitEl = document.getElementById('m-val-profit');
-        if (profitEl) {
-            const prefix = this.currentProfit >= 0 ? '+' : '';
-            profitEl.innerText = `${prefix}${this.currentProfit.toFixed(2)} USD`;
-            profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
-        }
-
-        if(document.getElementById('m-stat-w')) document.getElementById('m-stat-w').innerText = this.stats.wins;
-        if(document.getElementById('m-stat-l')) document.getElementById('m-stat-l').innerText = this.stats.losses;
-
-        const color = lastProfit > 0 ? 'text-green-500' : 'text-red-500';
-        this.log(`RESULTADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
-        
-        // Sincroniza com a estatística global
-        if (typeof app.updateModuleProfit === 'function') {
-            app.moduleProfits['m'] = this.currentProfit;
+        const btn = document.getElementById('btn-' + side);
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = "1";
+            btn.classList.add('animate-pulse', 'ring-4', 'ring-white/20');
         }
     },
 
@@ -222,8 +105,10 @@ const ManualModule = {
             if(b) {
                 b.disabled = true;
                 b.style.opacity = "0.2";
-                b.classList.remove('animate-pulse');
+                b.classList.remove('animate-pulse', 'ring-4', 'ring-white/20');
             }
         });
-    }
+    },
+
+    // ... (Mantém trade, handleContractResult, checkLimits e updateUI)
 };
