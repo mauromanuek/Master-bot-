@@ -66,7 +66,6 @@ const DerivAPI = {
         this.log(`Trocando ativo: ${this.currentSymbol} -> ${newSymbol}`);
         
         // 1. Limpa todas as subscrições ativas para evitar overlap de dados
-        // Enviamos forget_all mas mantemos o fluxo de contratos/saldo vivos via handleResponses
         this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
 
@@ -83,10 +82,8 @@ const DerivAPI = {
             // Reinicia subscrições para o novo ativo
             this.subscribeCandles(this.callbacks['candles']);
             
-            // Se o módulo de dígitos estiver ativo, reinicia a subscrição de ticks
-            if (window.DigitModule && DigitModule.isAnalysisRunning) {
-                this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
-            }
+            // Se o módulo de dígitos estiver ativo ou se o app precisar de ticks, subscreve
+            this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
         }, 500);
     },
 
@@ -167,7 +164,6 @@ const DerivAPI = {
         // --- CANAL 2: Vela em Formação (OHLC) - Normalização de Dados ---
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol && this.callbacks['candles']) {
-                // Criamos um objeto normalizado para evitar que o analista receba formatos diferentes
                 const normalizedCandle = {
                     epoch: data.ohlc.open_time,
                     open: data.ohlc.open,
@@ -187,20 +183,33 @@ const DerivAPI = {
         // --- CANAL 3: Ticks em tempo real ---
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
+                // Notifica analista de IA
                 if (window.app && app.analista) {
                     app.analista.adicionarDados(null, data.tick.quote);
                 }
 
+                // Notifica Módulo de Dígitos (se existir)
                 if (window.DigitModule) {
                     DigitModule.processTick(data.tick);
                 }
+
+                // Evento global para o deriv_app
+                document.dispatchEvent(new CustomEvent('tick_update', { detail: data.tick }));
             }
         }
 
         // --- CANAL 4: Atualização de Saldo ---
         if (data.msg_type === 'balance') {
+            const balanceValue = data.balance.balance;
+            // Atualiza UI principal
             const el = document.getElementById('acc-balance');
-            if (el) el.innerText = `$ ${data.balance.balance.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            if (el) el.innerText = `$ ${balanceValue.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            
+            // Atualiza objeto global app
+            if (window.app) {
+                app.balance = balanceValue;
+                if (typeof app.updateBalanceUI === 'function') app.updateBalanceUI();
+            }
         }
 
         // --- CANAL 5: Confirmação de Compra ---
@@ -225,11 +234,42 @@ const DerivAPI = {
             
             delete this.activeContracts[c.contract_id];
             
+            // Dispara evento para os módulos computarem o lucro
             document.dispatchEvent(new CustomEvent('contract_finished', { 
                 detail: { prefix, profit, contract: c } 
             }));
             
             this.log(`Contrato [${prefix}] Finalizado: ${profit > 0 ? 'Win' : 'Loss'} (${profit})`);
+            
+            // Solicita atualização de saldo após fechamento de contrato
+            this.socket.send(JSON.stringify({ balance: 1 }));
+        }
+    },
+
+    /**
+     * Helper para obter informações da conta de forma assíncrona
+     */
+    getAccountInfo() {
+        if (!this.isAuthorized) return null;
+        return new Promise((resolve) => {
+            const tempListener = (msg) => {
+                const data = JSON.parse(msg.data);
+                if (data.msg_type === 'authorize') {
+                    this.socket.removeEventListener('message', tempListener);
+                    resolve(data.authorize);
+                }
+            };
+            this.socket.addEventListener('message', tempListener);
+            this.socket.send(JSON.stringify({ authorize: localStorage.getItem('deriv_token') || "" }));
+        });
+    },
+
+    /**
+     * Helper para subscrever ticks de qualquer ativo
+     */
+    subscribeTicks(symbol) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
         }
     },
 
