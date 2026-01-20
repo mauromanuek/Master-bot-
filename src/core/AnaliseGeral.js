@@ -10,17 +10,15 @@ class AnaliseGeral {
         this.historicoVelas = [];
         this.ultimosTicks = [];
         this._analisando = false;
-        console.log("Memória limpa para novo ciclo.");
+        console.log("[Sniper Engine] Memória limpa para novo ciclo.");
     }
 
     adicionarDados(velas, tickBruto = null) {
-        // 1. Processamento de Ticks em Tempo Real
         if (tickBruto !== null) {
             this.ultimosTicks.push(parseFloat(tickBruto));
             if (this.ultimosTicks.length > 20) this.ultimosTicks.shift();
         }
 
-        // 2. Processamento de Velas OHLC (Padronização de chaves para o histórico interno)
         if (Array.isArray(velas)) {
             this.historicoVelas = velas.map(v => ({
                 open: parseFloat(v.open || v.o || 0),
@@ -54,40 +52,34 @@ class AnaliseGeral {
     }
 
     async obterVereditoCompleto() {
-        // Proteção contra chamadas simultâneas e dados insuficientes
-        if (this._analisando || this.historicoVelas.length < 10) {
-            return null;
-        }
+        // Reduzido para 5 velas para aumentar a sensibilidade do Scalping Sniper
+        if (this._analisando || this.historicoVelas.length < 5) return null;
 
         const assetName = window.app ? app.currentAsset : "R_100";
         
-        // CORREÇÃO: Mapeamento correto das chaves para o Payload
         const payload = {
             asset: assetName,
             fluxo_ticks: this.ultimosTicks,
-            contexto_velas: this.historicoVelas.slice(-15).map(v => ({
-                open: v.open.toFixed(5),
-                close: v.close.toFixed(5),
-                high: v.high.toFixed(5),
-                low: v.low.toFixed(5)
-            }))
+            contexto_velas: this.historicoVelas.slice(-20) // Enviamos mais contexto para cálculo de tendência
         };
 
         this._analisando = true;
         try {
-            const veredito = await this.chamarGroq(payload);
+            // Chamada direta para a Engine Determinística
+            const veredito = await this.chamarEngineSniper(payload);
             this._analisando = false;
             return veredito;
         } catch (e) {
-            console.error("[AnaliseGeral] Falha na análise:", e);
+            console.error("[Sniper Engine] Falha no processamento:", e);
             this._analisando = false;
-            return { direcao: "NEUTRO", confianca: 0, motivo: "Instabilidade na IA" };
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro de processamento local" };
         }
     }
 
-    async chamarGroq(payload) {
+    async chamarEngineSniper(payload) {
+        // Reduzimos o timeout drasticamente, pois a lógica técnica é instantânea (diferente da IA)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // Aumentado para 15s para maior estabilidade
+        const timeoutId = setTimeout(() => controller.abort(), 5000); 
 
         try {
             const response = await fetch(this.backendUrl, {
@@ -98,27 +90,20 @@ class AnaliseGeral {
             });
 
             clearTimeout(timeoutId);
-
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
             const data = await response.json();
             
-            // Tratamento robusto para extração do conteúdo da Groq
-            let content;
-            try {
-                content = typeof data.choices[0].message.content === 'string' 
-                    ? JSON.parse(data.choices[0].message.content) 
-                    : data.choices[0].message.content;
-            } catch (parseError) {
-                console.error("[AnaliseGeral] Erro ao decodificar JSON da IA:", data);
-                throw new Error("Resposta da IA inválida");
-            }
+            // O backend agora retorna o JSON estruturado diretamente no content
+            const content = typeof data.choices[0].message.content === 'string' 
+                ? JSON.parse(data.choices[0].message.content) 
+                : data.choices[0].message.content;
             
             return {
                 direcao: (content.direcao || "NEUTRO").toUpperCase(),
                 confianca: parseInt(content.confianca || 0),
-                estratégia: content.estratégia || "Análise de Momentum",
-                motivo: content.motivo || "Veredito técnico processado",
+                estratégia: content.estratégia || "Sniper Technical",
+                motivo: content.motivo || "Análise estrutural processada",
                 asset: payload.asset
             };
         } catch (e) {
