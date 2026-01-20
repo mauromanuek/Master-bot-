@@ -6,15 +6,18 @@ const DerivAPI = {
     currentSymbol: "R_100", 
     candleSubscriptionId: null,
     isSubscribing: false,
-    _pendingPrefix: 'm', // Prefixo padrão
+    _pendingPrefix: 'm',
 
-    // MAPA DE TRADUÇÃO TÉCNICA (Essencial para resolver "Símbolo Inválido")
+    // ATUALIZADO: Incluindo índices de 1s para evitar erro de "Símbolo Inválido"
     mapaSimbolos: {
         "VOLATILITY 10 INDEX": "R_10",
         "VOLATILITY 25 INDEX": "R_25",
         "VOLATILITY 50 INDEX": "R_50",
         "VOLATILITY 75 INDEX": "R_75",
         "VOLATILITY 100 INDEX": "R_100",
+        "VOLATILITY 10 (1S)": "1Z10",
+        "VOLATILITY 15 (1S)": "1HZ15V",
+        "VOLATILITY 100 (1S)": "1HZ100V",
         "BOOM 300 INDEX": "B_300",
         "CRASH 300 INDEX": "C_300",
         "BOOM 500 INDEX": "B_500",
@@ -22,110 +25,70 @@ const DerivAPI = {
         "STEP INDEX": "STPINDEX"
     },
 
-    /**
-     * Inicializa a conexão e configura os listeners globais
-     */
     connect(token, callback) {
-        if (this.socket) {
-            try { this.socket.close(); } catch(e) {}
-        }
+        if (this.socket) { try { this.socket.close(); } catch(e) {} }
         
-        // Conexão via WebSocket Seguro (WSS) com App ID oficial
         this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
 
         this.socket.onopen = () => {
-            this.log("Conectado ao servidor Deriv. Autorizando...");
+            this.log("Conectado. Autorizando...");
             this.socket.send(JSON.stringify({ authorize: token }));
         };
 
         this.socket.onmessage = (msg) => {
             const data = JSON.parse(msg.data);
-            
-            // Tratamento de Erros Globais
             if (data.error) {
-                // Erro de subscrição duplicada é comum e não deve travar o app
                 if (data.error.code === 'AlreadySubscribed') return; 
                 this.log(`Erro API: ${data.error.message}`, "error");
                 if (callback) callback(data);
                 return;
             }
 
-            // Sucesso na Autorização: Inicia fluxos de saldo e contratos
             if (data.msg_type === 'authorize') {
                 this.isAuthorized = true;
-                this.log("Autorizado com sucesso.");
+                this.log("Autorizado.");
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
-                this.socket.send(JSON.stringify({ 
-                    proposal_open_contract: 1, 
-                    subscribe: 1 
-                }));
+                this.socket.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
             }
 
             this.handleResponses(data);
             if (callback) callback(data);
         };
-
-        this.socket.onerror = (err) => {
-            this.log("Erro de conexão com servidor", "error");
-            if (callback) callback({ error: { message: "Erro de conexão com servidor" } });
-        };
     },
 
-    /**
-     * Gerencia a troca de ativo limpando subscrições anteriores
-     */
     changeSymbol(newSymbol) {
         if (!newSymbol) return;
-        
-        // Traduz o símbolo antes de aplicar (Resolve o erro visual do gráfico)
         const symbolFormatado = this.mapaSimbolos[newSymbol.toUpperCase()] || newSymbol;
         
-        if (this.currentSymbol === symbolFormatado) {
-            // Se for o mesmo símbolo, apenas garante que as velas estão subscritas
-            this.subscribeCandles(this.callbacks['candles']);
-            return;
-        }
+        if (this.currentSymbol === symbolFormatado && this.candleSubscriptionId) return;
         
-        this.log(`Trocando ativo: ${this.currentSymbol} -> ${symbolFormatado}`);
+        this.log(`Ativo: ${symbolFormatado}`);
         
-        // 1. Limpa todas as subscrições ativas para evitar overlap de dados
-        this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
+        // Limpa apenas o necessário para não bugar o Radar
+        this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc"] }));
         this.candleSubscriptionId = null;
-
-        // 2. Atualiza estado global
         this.currentSymbol = symbolFormatado;
         
         if (window.app) {
-            if (app.analista) app.analista.limparHistorico();
             app.currentAsset = symbolFormatado; 
+            if (app.analista) app.analista.limparHistorico();
         }
 
-        // 3. Pequeno delay para garantir que o servidor processou o 'forget_all'
         setTimeout(() => {
-            // Reinicia subscrições para o novo ativo com carga total
             this.subscribeCandles(this.callbacks['candles']);
-            
-            // Se o módulo de dígitos estiver ativo ou se o app precisar de ticks, subscreve
             this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
-            
-            // DISPARA EVENTO PARA O GRÁFICO ATUALIZAR (Resolve o erro "Símbolo Inválido")
             document.dispatchEvent(new CustomEvent('symbol_changed', { detail: symbolFormatado }));
-        }, 500);
+        }, 300);
     },
 
-    /**
-     * Subscreve ao histórico de velas (OHLC)
-     * Atualizado para 100 velas para evitar erro de "Dados Insuficientes" na Engine
-     */
     subscribeCandles(callback) {
         if (!this.isAuthorized || !this.currentSymbol) return;
-        
         if (callback) this.callbacks['candles'] = callback;
         
         this.socket.send(JSON.stringify({
             ticks_history: this.currentSymbol,
             adjust_start_time: 1,
-            count: 100, // Aumentado de 50 para 100 velas
+            count: 100, // Mantido 100 para o histórico do Python
             end: "latest",
             granularity: 60,
             style: "candles",
@@ -134,19 +97,16 @@ const DerivAPI = {
     },
 
     /**
-     * Executa ordens de compra/venda
+     * AJUSTE SNIPER: Otimização de tempo de expiração
      */
     buy(type, stake, prefix, callback, extraParams = {}) {
-        if (!this.isAuthorized) {
-            this.log("Erro: Tentativa de compra sem autorização.", "error");
-            return;
-        }
+        if (!this.isAuthorized) return;
 
         this.callbacks['buy'] = callback;
         this._pendingPrefix = prefix || 'm';
 
-        // Lógica de tempo de expiração baseada no tipo de ativo
-        const isTickAsset = this.currentSymbol.includes('1Z') || this.currentSymbol.includes('1HZ') || this.currentSymbol.startsWith('R_');
+        // Sniper Mode: Se for ativo de volatilidade comum, usa 1 minuto. Se for (1s), usa 5 ticks.
+        const isFastAsset = this.currentSymbol.includes('1Z') || this.currentSymbol.includes('1HZ');
         
         const request = {
             buy: 1,
@@ -156,105 +116,62 @@ const DerivAPI = {
                 basis: 'stake',
                 contract_type: type,
                 currency: 'USD',
-                duration: extraParams.duration || (isTickAsset ? 5 : 1),
-                duration_unit: extraParams.duration_unit || (isTickAsset ? 't' : 'm'), 
+                // Dinâmico: Ticks para rápidos, Minutos para estáveis
+                duration: extraParams.duration || (isFastAsset ? 5 : 1),
+                duration_unit: extraParams.duration_unit || (isFastAsset ? 't' : 'm'), 
                 symbol: this.currentSymbol,
                 ...extraParams
             }
         };
 
         this.socket.send(JSON.stringify(request));
-        
-        // Callback temporário para a resposta imediata do "buy"
         if (callback) this.callbacks['last_buy_action'] = callback;
     },
 
-    /**
-     * Distribuidor central de mensagens do Socket
-     */
     handleResponses(data) {
-        // Atualiza ID de subscrição para controle de limpeza
         if (data.msg_type === 'candles' && data.subscription) {
             this.candleSubscriptionId = data.subscription.id;
         }
 
-        // --- CANAL 1: Histórico Inicial (Array) ---
+        // Histórico inicial (Array)
         if (data.msg_type === 'candles' && data.candles) {
-            if (this.callbacks['candles']) {
-                this.callbacks['candles'](data.candles);
-            }
-            
-            // Alimenta o analista com os dados iniciais de vela
-            if (window.app && app.analista) {
-                app.analista.adicionarDados(data.candles);
-            }
+            if (window.app && app.analista) app.analista.adicionarDados(data.candles);
+            if (this.callbacks['candles']) this.callbacks['candles'](data.candles);
         } 
         
-        // --- CANAL 2: Vela em Formação (OHLC) - Normalização de Dados ---
+        // Vela em tempo real (OHLC)
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol) {
-                const normalizedCandle = {
-                    epoch: data.ohlc.open_time,
-                    open: data.ohlc.open,
-                    high: data.ohlc.high,
-                    low: data.ohlc.low,
-                    close: data.ohlc.close
+                const normalized = {
+                    e: data.ohlc.open_time,
+                    o: data.ohlc.open,
+                    h: data.ohlc.high,
+                    l: data.ohlc.low,
+                    c: data.ohlc.close
                 };
-                
-                if (this.callbacks['candles']) {
-                    this.callbacks['candles'](normalizedCandle);
-                }
-                
-                if (window.app && app.analista) {
-                    app.analista.adicionarDados(normalizedCandle);
-                }
+                if (window.app && app.analista) app.analista.adicionarDados(normalized);
+                if (this.callbacks['candles']) this.callbacks['candles'](normalized);
             }
         }
 
-        // --- CANAL 3: Ticks em tempo real ---
+        // Ticks
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
-                // Notifica analista de IA
-                if (window.app && app.analista) {
-                    app.analista.adicionarDados(null, data.tick.quote);
-                }
-
-                // Notifica Módulo de Dígitos (se existir)
-                if (window.DigitModule) {
-                    DigitModule.processTick(data.tick);
-                }
-
-                // Evento global para o deriv_app
+                if (window.app && app.analista) app.analista.adicionarDados(null, data.tick.quote);
+                if (window.DigitModule) DigitModule.processTick(data.tick);
                 document.dispatchEvent(new CustomEvent('tick_update', { detail: data.tick }));
             }
         }
 
-        // --- CANAL 4: Atualização de Saldo ---
+        // Saldo
         if (data.msg_type === 'balance') {
-            const balanceValue = data.balance.balance;
-            // Atualiza UI principal
+            const val = data.balance.balance;
             const el = document.getElementById('acc-balance');
-            if (el) el.innerText = `$ ${balanceValue.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
-            
-            // Atualiza objeto global app
-            if (window.app) {
-                app.balance = balanceValue;
-            }
+            if (el) el.innerText = `$ ${val.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            if (window.app) app.balance = val;
         }
 
-        // --- CANAL 5: Confirmação de Compra ---
-        if (data.msg_type === 'buy') {
-            if (this.callbacks['last_buy_action']) {
-                this.callbacks['last_buy_action'](data);
-                delete this.callbacks['last_buy_action'];
-            }
-            if (!data.error) {
-                const contractId = data.buy.contract_id;
-                this.activeContracts[contractId] = this._pendingPrefix;
-            }
-        }
-
-        // --- CANAL 6: Monitoramento de Resultados ---
+        // Resultado do Contrato
         if (data.msg_type === 'proposal_open_contract') {
             const c = data.proposal_open_contract;
             if (!c || !c.is_sold) return;
@@ -264,44 +181,18 @@ const DerivAPI = {
             
             delete this.activeContracts[c.contract_id];
             
-            // Dispara evento para os módulos computarem o lucro
+            // ESSENCIAL: Notifica a interface do resultado para atualizar W/L
+            if (window.app) app.updateModuleProfit(profit, prefix);
+            
             document.dispatchEvent(new CustomEvent('contract_finished', { 
                 detail: { prefix, profit, contract: c } 
             }));
             
-            this.log(`Contrato [${prefix}] Finalizado: ${profit > 0 ? 'Win' : 'Loss'} (${profit})`);
-            
-            // Solicita atualização de saldo após fechamento de contrato
             this.socket.send(JSON.stringify({ balance: 1 }));
         }
-    },
 
-    /**
-     * Helper para obter informações da conta de forma assíncrona
-     */
-    getAccountInfo() {
-        if (!this.isAuthorized) return null;
-        return new Promise((resolve) => {
-            const tempListener = (msg) => {
-                const data = JSON.parse(msg.data);
-                if (data.msg_type === 'authorize') {
-                    this.socket.removeEventListener('message', tempListener);
-                    resolve(data.authorize);
-                }
-            };
-            this.socket.addEventListener('message', tempListener);
-            this.socket.send(JSON.stringify({ authorize: localStorage.getItem('deriv_token') || "" }));
-        });
-    },
-
-    /**
-     * Helper para subscrever ticks de qualquer ativo
-     */
-    subscribeTicks(symbol) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            // Garante tradução antes de subscrever ticks avulsos
-            const sym = this.mapaSimbolos[symbol.toUpperCase()] || symbol;
-            this.socket.send(JSON.stringify({ ticks: sym, subscribe: 1 }));
+        if (data.msg_type === 'buy' && !data.error) {
+            this.activeContracts[data.buy.contract_id] = this._pendingPrefix;
         }
     },
 
@@ -309,4 +200,4 @@ const DerivAPI = {
         const color = type === "error" ? "color: #ff4444" : "color: #00ff88";
         console.log(`%c[DerivAPI] ${msg}`, color);
     }
-}
+};
