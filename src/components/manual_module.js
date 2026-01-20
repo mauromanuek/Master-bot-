@@ -11,7 +11,7 @@ const ManualModule = {
             <div class="space-y-4 max-w-md mx-auto">
                 <div class="flex justify-between items-center">
                     <div>
-                        <h2 class="text-xl font-bold text-green-500 italic uppercase leading-none">Manual Pro</h2>
+                        <h2 class="text-xl font-bold text-green-500 italic uppercase leading-none">Manual Sniper Pro</h2>
                         <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: ${app.currentAsset}</span>
                     </div>
                     <div id="m-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
@@ -35,12 +35,12 @@ const ManualModule = {
                 <button id="btn-m-start" onclick="ManualModule.toggle()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Monitoramento</button>
                 
                 <div class="grid grid-cols-2 gap-4">
-                    <button id="btn-call" onclick="ManualModule.trade('CALL')" class="py-6 bg-green-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed" disabled>CALL</button>
-                    <button id="btn-put" onclick="ManualModule.trade('PUT')" class="py-6 bg-red-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed" disabled>PUT</button>
+                    <button id="btn-call" onclick="ManualModule.trade('CALL')" class="py-6 bg-green-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed border-b-4 border-green-800" disabled>CALL</button>
+                    <button id="btn-put" onclick="ManualModule.trade('PUT')" class="py-6 bg-red-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed border-b-4 border-red-800" disabled>PUT</button>
                 </div>
 
                 <div id="m-status" class="bg-black p-3 rounded-xl h-32 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> [SISTEMA] Modo Manual aguardando início...</p>
+                    <p class="text-gray-600 italic">> [SISTEMA] Modo Manual aguardando comando...</p>
                 </div>
                 
                 <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 flex justify-between items-center shadow-xl">
@@ -75,7 +75,7 @@ const ManualModule = {
             btn.classList.replace('bg-blue-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-green-500');
             indicator.classList.add('animate-pulse');
-            this.log(`MONITORANDO ATIVO: ${app.currentAsset}`, "text-blue-400 font-bold");
+            this.log(`MONITORANDO SNIPER: ${app.currentAsset}`, "text-blue-400 font-bold");
             this.setupListener();
             this.runCycle();
         } else {
@@ -106,15 +106,16 @@ const ManualModule = {
         if (!this.isActive || this.isTrading) return;
         if (this.checkLimits()) return;
 
-        this.log(`IA ANALISANDO ${app.currentAsset}...`, "text-gray-500");
+        // Reset visual antes da nova análise
         this.resetButtons();
 
         try {
-            const veredito = await app.analista.obterVereditoCompleto(app.currentAsset);
+            const veredito = await app.analista.obterVereditoCompleto();
             
             if (!this.isActive || this.isTrading) return;
 
-            if (veredito && (veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 55) {
+            // No manual, liberamos o gatilho com 65% para dar liberdade ao trader
+            if (veredito && (veredito.direcao === "CALL" || veredito.direcao === "PUT") && veredito.confianca >= 65) {
                 const side = veredito.direcao.toLowerCase();
                 const target = document.getElementById('btn-' + side);
                 
@@ -122,24 +123,25 @@ const ManualModule = {
                     target.disabled = false;
                     target.style.opacity = "1";
                     target.classList.add('animate-pulse');
-                    this.log(`IA LIBEROU ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
+                    this.log(`OPORTUNIDADE: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
+                    this.log(`ESTRATÉGIA: ${veredito.estratégia}`, "text-gray-500 text-[9px]");
                     
-                    // Validade do sinal: 15 segundos
+                    // Sinal Sniper expira em 10 segundos para evitar entradas tardias
                     if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
                     this._analysisTimeout = setTimeout(() => {
                         if(!this.isTrading && this.isActive) {
-                            this.log("SINAL EXPIRADO. REANALISANDO...", "text-gray-500");
+                            this.log("SINAL EXPIRADO (ZONA DE RISCO)", "text-gray-500");
                             this.runCycle();
                         }
-                    }, 15000);
+                    }, 10000);
                 }
             } else {
-                this.log(`MERCADO INCERTO (${veredito?.confianca || 0}%). REAVALIANDO...`, "text-gray-600");
-                this._analysisTimeout = setTimeout(() => this.runCycle(), 5000);
+                // Engine rápida: Reanalisa a cada 2 segundos no modo manual
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
             }
         } catch (e) {
-            this.log("ERRO NA CONEXÃO IA.", "text-red-400");
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 7000);
+            this.log("ENGINE OFFLINE. RECONECTANDO...", "text-red-400");
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 5000);
         }
     },
 
@@ -149,14 +151,14 @@ const ManualModule = {
         this.isTrading = true;
         const stake = document.getElementById('m-stake')?.value || 10;
 
-        this.log(`MANUAL: EXECUTANDO ${type}...`, "text-yellow-400 font-bold");
+        this.log(`EXECUTANDO ORDEM: ${type}`, "text-yellow-400 font-bold");
         this.resetButtons();
 
         DerivAPI.buy(type, stake, 'm', (res) => {
             if (res.error) {
-                this.log(`ERRO: ${res.error.message}`, "text-red-500");
+                this.log(`ERRO API: ${res.error.message}`, "text-red-500");
                 this.isTrading = false;
-                this._analysisTimeout = setTimeout(() => this.runCycle(), 3000);
+                this.runCycle();
             }
         });
     },
@@ -171,14 +173,9 @@ const ManualModule = {
         
         this.updateUI(profit);
 
-        // SINCRONIZAÇÃO COM FOOTER E GLOBAL
-        if (typeof app.updateModuleProfit === 'function') {
-            app.updateModuleProfit(profit, 'm');
-        }
-
         if (this.isActive) {
-            this.log("CICLO CONCLUÍDO. REANALISANDO EM 2s...", "text-blue-400");
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
+            // No modo manual, voltamos a monitorar quase imediatamente
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 1000);
         }
     },
 
@@ -187,12 +184,12 @@ const ManualModule = {
         const sl = parseFloat(document.getElementById('m-sl')?.value || 0);
 
         if (this.currentProfit >= tp && tp > 0) {
-            this.log(`META ALCANÇADA: +${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
+            this.log(`META BATIDA: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
         if (this.currentProfit <= (sl * -1) && sl > 0) {
-            this.log(`STOP LOSS ATINGIDO: ${this.currentProfit.toFixed(2)}`, "text-red-500 font-black");
+            this.log(`STOP LOSS: -$${Math.abs(this.currentProfit).toFixed(2)}`, "text-red-500 font-black");
             this.toggle();
             return true;
         }
@@ -212,6 +209,11 @@ const ManualModule = {
 
         const color = lastProfit > 0 ? 'text-green-500' : 'text-red-500';
         this.log(`RESULTADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (${lastProfit.toFixed(2)} USD)`, color);
+        
+        // Sincroniza com a estatística global
+        if (typeof app.updateModuleProfit === 'function') {
+            app.moduleProfits['m'] = this.currentProfit;
+        }
     },
 
     resetButtons() {
