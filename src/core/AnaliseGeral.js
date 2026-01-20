@@ -5,6 +5,20 @@ class AnaliseGeral {
         this.historicoVelas = [];
         this.ultimosTicks = [];
         this._analisando = false;
+
+        // MAPA DE TRADUÇÃO PARA SÍMBOLOS TÉCNICOS DA DERIV (Resolve "Símbolo Inválido")
+        this.mapaSimbolos = {
+            "VOLATILITY 10 INDEX": "R_10",
+            "VOLATILITY 25 INDEX": "R_25",
+            "VOLATILITY 50 INDEX": "R_50",
+            "VOLATILITY 75 INDEX": "R_75",
+            "VOLATILITY 100 INDEX": "R_100",
+            "BOOM 300 INDEX": "B_300",
+            "CRASH 300 INDEX": "C_300",
+            "BOOM 500 INDEX": "B_500",
+            "CRASH 500 INDEX": "C_500",
+            "STEP INDEX": "STPINDEX"
+        };
     }
 
     limparHistorico() {
@@ -56,11 +70,15 @@ class AnaliseGeral {
         // Sniper exige pelo menos 20 velas para calcular Tendência e Zonas de Memória
         if (this._analisando || this.historicoVelas.length < 20) return null;
 
-        const assetName = window.app ? app.currentAsset : "R_100";
+        // Captura o ativo atual do aplicativo
+        const assetBruto = window.app ? app.currentAsset : "VOLATILITY 100 INDEX";
+        
+        // Traduz o nome legível para o código técnico que a Deriv/TradingView aceita
+        const assetTecnico = this.mapaSimbolos[assetBruto.toUpperCase()] || assetBruto;
         
         // Payload agora focado em dados brutos para a lógica determinística do Python
         const payload = {
-            asset: assetName,
+            asset: assetTecnico,
             fluxo_ticks: this.ultimosTicks,
             contexto_velas: this.historicoVelas.slice(-30), // Enviamos contexto para Médias Móveis e Suporte/Resistência
             indicadores: this.calcularIndicadoresLocais() // Opcional: pré-processamento no JS
@@ -74,7 +92,7 @@ class AnaliseGeral {
         } catch (e) {
             console.error("[Sniper Engine] Falha no processamento:", e);
             this._analisando = false;
-            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro de conexão com a Engine" };
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro de conexão ou Servidor acordando" };
         }
     }
 
@@ -91,8 +109,8 @@ class AnaliseGeral {
 
     async chamarEngineSniper(payload) {
         const controller = new AbortController();
-        // Aumentamos para 10s no Render pois o plano grátis pode demorar a responder (Cold Start)
-        const timeoutId = setTimeout(() => controller.abort(), 10000); 
+        // Aumentamos para 15s no Render pois o plano grátis pode demorar a responder (Cold Start)
+        const timeoutId = setTimeout(() => controller.abort(), 15000); 
 
         try {
             const response = await fetch(this.backendUrl, {
