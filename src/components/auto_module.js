@@ -1,6 +1,6 @@
 const AutoModule = {
     isRunning: false,
-    isTrading: false,
+    // Eliminamos isTrading local para usar o app.isTrading (Global)
     currentProfit: 0,
     stats: { wins: 0, losses: 0, total: 0 },
     _handler: null,
@@ -12,7 +12,7 @@ const AutoModule = {
                 <div class="flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-bold text-purple-500 italic uppercase leading-none">Auto Scalper Sniper</h2>
-                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Quantitative Engine V2</span>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Quantitative Engine V2.1</span>
                     </div>
                     <div id="a-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
@@ -71,7 +71,6 @@ const AutoModule = {
             indicator.classList.replace('bg-gray-600', 'bg-purple-500');
             indicator.classList.add('animate-pulse');
             
-            // Reinicia estatísticas da sessão local
             this.currentProfit = 0;
             this.stats = { wins: 0, losses: 0, total: 0 };
             
@@ -85,14 +84,12 @@ const AutoModule = {
             indicator.classList.replace('bg-purple-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
             this.log("ROBÔ DESATIVADO", "text-yellow-600");
-            this.isTrading = false;
+            app.isTrading = false; // Reset global ao desligar
         }
     },
 
     setupListener() {
-        // Remove anterior para evitar execuções duplicadas
         if (this._handler) document.removeEventListener('contract_finished', this._handler);
-        
         this._handler = (e) => {
             if (e.detail && e.detail.prefix === 'a') {
                 this.handleContractResult(e.detail.profit);
@@ -102,48 +99,50 @@ const AutoModule = {
     },
 
     async runCycle() {
-        if (!this.isRunning || this.isTrading) return;
+        // AJUSTE: Checa o lock global do Maestro
+        if (!this.isRunning || app.isTrading) return;
         if (this.checkLimits()) return;
 
         try {
-            // Solicita veredito ao Analista (que agora usa o servidor Python)
+            this.log("ANALISANDO FLUXO QUANTITATIVO...", "text-gray-600");
             const veredito = await app.analista.obterVereditoCompleto();
             
-            if (!this.isRunning || this.isTrading) return;
+            // Re-checa se o usuário parou o robô durante a requisição de rede
+            if (!this.isRunning || app.isTrading) return;
 
-            if (veredito && veredito.confianca >= 75 && (veredito.direcao === "CALL" || veredito.direcao === "PUT")) {
+            if (veredito && veredito.confianca >= 80 && (veredito.direcao === "CALL" || veredito.direcao === "PUT")) {
                 const stake = document.getElementById('a-stake')?.value || 1;
                 
-                this.log(`GATILHO: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
-                this.isTrading = true;
+                this.log(`SINAL CONFIRMADO: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
+                app.isTrading = true; // Ativa o lock global
                 
                 DerivAPI.buy(veredito.direcao, stake, 'a', (res) => {
                     if (res.error) {
-                        this.log(`ERRO: ${res.error.message}`, "text-red-500");
-                        this.isTrading = false;
-                        this.scheduleNext(2000);
+                        this.log(`FALHA NA ORDEM: ${res.error.message}`, "text-red-500");
+                        app.isTrading = false;
+                        this.scheduleNext(3000);
                     }
                 });
             } else {
-                // Ciclo rápido de análise (1 segundo)
-                this.scheduleNext(1000); 
+                // Se neutro ou pouca confiança, analisa novamente em 1.5s
+                this.scheduleNext(1500); 
             }
 
         } catch (e) {
-            this.log(`ENGINE BUSY...`, "text-gray-600");
-            this.scheduleNext(3000);
+            this.log(`ENGINE BUSY OU SEM DADOS...`, "text-gray-700");
+            this.scheduleNext(4000);
         }
     },
 
     scheduleNext(ms) {
         if (this._cycleTimeout) clearTimeout(this._cycleTimeout);
-        if (this.isRunning && !this.isTrading) {
+        if (this.isRunning && !app.isTrading) {
             this._cycleTimeout = setTimeout(() => this.runCycle(), ms);
         }
     },
 
     handleContractResult(profit) {
-        this.isTrading = false;
+        // O app.updateModuleProfit já seta app.isTrading = false
         this.currentProfit += profit;
         
         if (profit > 0) this.stats.wins++;
@@ -153,8 +152,8 @@ const AutoModule = {
         this.updateUI(profit);
         
         if (this.isRunning) {
-            // Espera curta para evitar múltiplas entradas na mesma vela de exaustão
-            this.scheduleNext(2000);
+            // Janela de proteção de 5 segundos após um trade para estabilizar a análise
+            this.scheduleNext(5000);
         }
     },
 
@@ -163,7 +162,7 @@ const AutoModule = {
         const sl = parseFloat(document.getElementById('a-sl')?.value || 0);
 
         if (tp > 0 && this.currentProfit >= tp) {
-            this.log(`META ATINGIDA: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
+            this.log(`META ALCANÇADA: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
             this.toggle();
             return true;
         }
@@ -185,6 +184,7 @@ const AutoModule = {
         document.getElementById('a-stat-w').innerText = this.stats.wins;
         document.getElementById('a-stat-l').innerText = this.stats.losses;
 
-        this.log(`LUCRO: ${lastProfit.toFixed(2)} USD`, lastProfit > 0 ? "text-green-400" : "text-red-400");
+        const color = lastProfit > 0 ? "text-green-400" : "text-red-400";
+        this.log(`RESULTADO: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (+$${lastProfit.toFixed(2)})`, color);
     }
 };
