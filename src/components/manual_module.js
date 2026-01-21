@@ -10,8 +10,8 @@ const ManualModule = {
             <div class="space-y-4 max-w-md mx-auto">
                 <div class="flex justify-between items-center">
                     <div>
-                        <h2 class="text-xl font-bold text-green-500 italic uppercase leading-none">Manual Sniper Pro</h2>
-                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: ${app.currentAsset}</span>
+                        <h2 class="text-xl font-bold text-blue-500 italic uppercase leading-none">Manual Sniper Pro</h2>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: <span id="m-current-asset" class="text-blue-400">${app.currentAsset || '---'}</span></span>
                     </div>
                     <div id="m-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
@@ -19,7 +19,7 @@ const ManualModule = {
                 <div class="grid grid-cols-3 gap-2 bg-gray-900 p-3 rounded-xl border border-gray-800 shadow-lg">
                     <div>
                         <label class="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Stake ($)</label>
-                        <input id="m-stake" type="number" value="1.00" step="0.50" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-green-500 transition-colors">
+                        <input id="m-stake" type="number" value="1.00" step="0.50" class="w-full bg-black p-2 rounded text-xs text-white border border-gray-800 outline-none focus:border-blue-500 transition-colors">
                     </div>
                     <div>
                         <label class="text-[9px] text-green-500 uppercase font-bold tracking-wider">T.Profit</label>
@@ -34,17 +34,23 @@ const ManualModule = {
                 <button id="btn-m-start" onclick="ManualModule.toggle()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Monitoramento</button>
                 
                 <div class="grid grid-cols-2 gap-4">
-                    <button id="btn-call" onclick="ManualModule.trade('CALL')" class="py-6 bg-green-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed border-b-4 border-green-800" disabled>CALL</button>
-                    <button id="btn-put" onclick="ManualModule.trade('PUT')" class="py-6 bg-red-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed border-b-4 border-red-800" disabled>PUT</button>
+                    <button id="btn-call" onclick="ManualModule.trade('CALL')" class="py-6 bg-green-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed border-b-4 border-green-800 flex flex-col items-center justify-center" disabled>
+                        <span>CALL</span>
+                        <span id="call-conf" class="text-[10px] opacity-60 font-mono">--%</span>
+                    </button>
+                    <button id="btn-put" onclick="ManualModule.trade('PUT')" class="py-6 bg-red-600 rounded-2xl font-black text-2xl shadow-lg opacity-20 transition-all transform active:scale-95 disabled:cursor-not-allowed border-b-4 border-red-800 flex flex-col items-center justify-center" disabled>
+                        <span>PUT</span>
+                        <span id="put-conf" class="text-[10px] opacity-60 font-mono">--%</span>
+                    </button>
                 </div>
 
                 <div id="m-status" class="bg-black p-3 rounded-xl h-32 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> [SISTEMA] Modo Manual aguardando comando...</p>
+                    <p class="text-gray-600 italic">> Aguardando ativação...</p>
                 </div>
                 
                 <div class="bg-gray-900 p-4 rounded-xl border border-gray-800 flex justify-between items-center shadow-xl">
                     <div>
-                        <p class="text-[9px] text-gray-500 uppercase font-bold">Lucro Acumulado</p>
+                        <p class="text-[9px] text-gray-500 uppercase font-bold">Saldo Sessão</p>
                         <p id="m-val-profit" class="text-xl font-black text-gray-600">0.00 USD</p>
                     </div>
                     <div class="text-right text-[10px] font-bold font-mono space-y-1 bg-black/40 p-2 rounded-lg">
@@ -68,13 +74,16 @@ const ManualModule = {
         this.isActive = !this.isActive;
         const btn = document.getElementById('btn-m-start');
         const indicator = document.getElementById('m-indicator');
+        const assetText = document.getElementById('m-current-asset');
         
         if (this.isActive) {
             btn.innerText = "PARAR MONITORAMENTO";
             btn.classList.replace('bg-blue-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-green-500');
             indicator.classList.add('animate-pulse');
-            this.log("MONITORAMENTO ATIVO - AGUARDANDO ENGINE", "text-blue-400 font-bold");
+            if(assetText) assetText.innerText = app.currentAsset;
+            
+            this.log("MODO SNIPER PRO ATIVO", "text-blue-400 font-bold");
             this.setupListener(); 
             this.runCycle();
         } else {
@@ -84,7 +93,7 @@ const ManualModule = {
             btn.classList.replace('bg-red-600', 'bg-blue-600');
             indicator.classList.replace('bg-green-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
-            this.log("MONITORAMENTO DESATIVADO", "text-yellow-600");
+            this.log("SISTEMA STANDBY", "text-yellow-600");
         }
     },
 
@@ -100,35 +109,35 @@ const ManualModule = {
 
     async runCycle() {
         if (!this.isActive || app.isTrading) {
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 1000);
             return;
         }
         if (this.checkLimits()) return;
 
         try {
+            // Requisição ao cérebro (Analista/Python)
             const veredito = await app.analista.obterVereditoCompleto();
             
             if (!this.isActive || app.isTrading) return;
 
-            // No manual, 65% já ativa os botões para o trader decidir
-            if (veredito && veredito.confianca >= 65 && (veredito.direcao === "CALL" || veredito.direcao === "PUT")) {
-                this.activateButtons(veredito.direcao.toLowerCase());
-                this.log(`ALERTA: Engine sugere ${veredito.direcao} (${veredito.confianca}%)`, "text-green-400");
+            // No manual, 60% já ativa os botões para você ter tempo de reação
+            if (veredito && veredito.confianca >= 60) {
+                this.activateButtons(veredito.direcao.toLowerCase(), veredito.confianca);
                 
-                // O sinal expira em 8 segundos para evitar entradas atrasadas
+                // Reduzi o tempo de expiração do sinal para 5s (Evita entradas atrasadas)
                 if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
                 this._analysisTimeout = setTimeout(() => {
                     if(!app.isTrading) {
                         this.resetButtons();
                         this.runCycle();
                     }
-                }, 8000);
+                }, 5000);
             } else {
                 this.resetButtons();
-                this._analysisTimeout = setTimeout(() => this.runCycle(), 1500); 
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 800); 
             }
         } catch (e) {
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 3000);
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
         }
     },
 
@@ -138,57 +147,67 @@ const ManualModule = {
         
         app.isTrading = true;
         this.resetButtons();
-        this.log(`EXECUTANDO ${side} MANUAL...`, "text-white font-bold");
+        this.log(`ORDEM ENVIADA: ${side}`, "text-white font-bold");
 
         DerivAPI.buy(side, stake, 'm', (res) => {
             if (res.error) {
-                this.log(`ERRO NA COMPRA: ${res.error.message}`, "text-red-500");
+                this.log(`FALHA: ${res.error.message}`, "text-red-500");
                 app.isTrading = false;
                 this.runCycle();
             }
         });
     },
 
-    activateButtons(side) {
+    activateButtons(side, confidence) {
         this.resetButtons();
         const btn = document.getElementById('btn-' + side);
+        const confText = document.getElementById(side + '-conf');
+        
         if (btn && !app.isTrading) {
             btn.disabled = false;
             btn.style.opacity = "1";
-            btn.classList.add('animate-pulse', 'ring-4', 'ring-white/30');
+            btn.classList.add('animate-bounce-subtle', 'ring-4', 'ring-white/20');
+            if(confText) confText.innerText = confidence + "%";
         }
     },
 
     resetButtons() {
         ['btn-call', 'btn-put'].forEach(id => {
             const b = document.getElementById(id);
+            const side = id.split('-')[1];
+            const confText = document.getElementById(side + '-conf');
+            
             if(b) {
                 b.disabled = true;
                 b.style.opacity = "0.2";
-                b.classList.remove('animate-pulse', 'ring-4', 'ring-white/30');
+                b.classList.remove('animate-bounce-subtle', 'ring-4', 'ring-white/20');
+                if(confText) confText.innerText = "--%";
             }
         });
     },
 
     handleContractResult(profit) {
-        // app.isTrading é resetado pelo Maestro
         this.currentProfit += profit;
         if (profit > 0) this.stats.wins++;
         else this.stats.losses++;
         
         this.updateUI(profit);
-        if (this.isActive) this.runCycle();
+        
+        // Pausa curta de 1.5s após trade para respirar
+        if (this.isActive) {
+            setTimeout(() => this.runCycle(), 1500);
+        }
     },
 
     checkLimits() {
         const tp = parseFloat(document.getElementById('m-tp')?.value || 0);
         const sl = parseFloat(document.getElementById('m-sl')?.value || 0);
         if (tp > 0 && this.currentProfit >= tp) {
-            this.log("META MANUAL ALCANÇADA!", "text-green-500 font-bold");
+            this.log("META ATINGIDA!", "text-green-500 font-black");
             this.toggle(); return true;
         }
         if (sl > 0 && this.currentProfit <= (sl * -1)) {
-            this.log("STOP MANUAL ATINGIDO!", "text-red-500 font-bold");
+            this.log("STOP ATINGIDO!", "text-red-500 font-black");
             this.toggle(); return true;
         }
         return false;
@@ -202,6 +221,6 @@ const ManualModule = {
         }
         document.getElementById('m-stat-w').innerText = this.stats.wins;
         document.getElementById('m-stat-l').innerText = this.stats.losses;
-        this.log(`FIM DO CONTRATO: ${lastProfit > 0 ? 'LUCRO' : 'PERDA'} ($${lastProfit.toFixed(2)})`, lastProfit > 0 ? "text-green-400" : "text-red-400");
+        this.log(`LUCRO: $${lastProfit.toFixed(2)}`, lastProfit > 0 ? "text-green-400" : "text-red-400");
     }
 };
