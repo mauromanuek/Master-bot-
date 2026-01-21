@@ -8,13 +8,14 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 LINK_DO_BOT = "https://mauromanuek.github.io/Master-bot-/"
 
-def motor_sniper_core(asset, velas):
+def motor_sniper_core(asset, velas, agressividade="low"):
     """
-    Core Engine: Lógica de Pivôs, Rejeição e Momentum Adaptativo
+    Core Engine: Scalping Agressivo baseado em Momentum de Ticks e Reversão de Micro-Tendência
     """
-    # BUFFER: Aumentado para garantir estabilidade dos cálculos matemáticos
-    if not velas or len(velas) < 20:
-        return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Buffer incompleto"}
+    # BUFFER REDUZIDO: Para Scalping, 10 velas já são suficientes para decidir
+    min_velas = 10 if agressividade == "high" else 15
+    if not velas or len(velas) < min_velas:
+        return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Aguardando volume de dados"}
 
     try:
         fechamentos = [float(v.get('c', 0)) for v in velas]
@@ -23,55 +24,66 @@ def motor_sniper_core(asset, velas):
         
         atual = fechamentos[-1]
         
-        # MÉDIAS SNIPER: Identificação de Micro-Tendência
-        sma_curta = sum(fechamentos[-8:]) / 8  # Mais rápida para Scalping
-        sma_longa = sum(fechamentos[-20:]) / 20
+        # MÉDIAS ULTRA-RÁPIDAS (Exponenciais para dar peso ao AGORA)
+        # Em vez de SMA 20, usamos EMA 3 e EMA 9
+        def calcular_ema(dados, periodo):
+            k = 2 / (periodo + 1)
+            ema = dados[0]
+            for preco in dados[1:]:
+                ema = (preco * k) + (ema * (1 - k))
+            return ema
+
+        ema_super_fast = calcular_ema(fechamentos, 3) 
+        ema_fast = calcular_ema(fechamentos, 7)
         
-        # ZONAS DE PREÇO (Dinâmicas)
-        resistencia = max(maximas[-15:-1])
-        suporte = min(minimas[-15:-1])
+        # ZONAS DE SCALPING (Curto Prazo - últimas 6 velas)
+        resistencia_curta = max(maximas[-6:-1])
+        suporte_curto = min(minimas[-6:-1])
         
-        # Ajuste Adaptativo: Margem reduzida para 10% para aumentar a sensibilidade sniper
-        margem = (resistencia - suporte) * 0.10
+        # VOLATILIDADE REAL (Diferença entre a máxima e mínima recente)
+        atp = sum([maximas[i] - minimas[i] for i in range(-5, 0)]) / 5
 
         direcao = "NEUTRO"
         confianca = 0
-        motivo = "Aguardando definição de zona de impacto"
+        motivo = "Monitorando exaustão"
 
-        # CÁLCULO DE MOMENTUM (Força da última vela)
+        # CÁLCULO DE VELOCIDADE (Momentum Imediato)
         momentum = atual - fechamentos[-2]
 
-        # ESTRATÉGIA 1: PIVÔ DE ALTA / REJEIÇÃO NO SUPORTE
-        if sma_curta >= sma_longa:
-            if atual > resistencia and momentum > 0:
+        # --- ESTRATÉGIA AGRESSIVA: ROMPIMENTO DE MOMENTUM ---
+        if ema_super_fast > ema_fast:
+            # Se rompeu a resistência curta com força
+            if atual > resistencia_curta and momentum > (atp * 0.2):
                 direcao = "CALL"
-                confianca = 90
-                motivo = f"ROMPIMENTO SNIPER: Alvo acima de {resistencia:.2f}"
-            elif atual <= (suporte + margem):
+                confianca = 88 if agressividade == "high" else 75
+                motivo = "EXPLOSÃO DE ALTA: Scalping momentum ativo"
+            # Rejeição em suporte curto
+            elif atual <= (suporte_curto + (atp * 0.1)):
                 direcao = "CALL"
-                confianca = 84
-                motivo = "ZONA DE COMPRA: Rejeição de preço no suporte"
+                confianca = 82
+                motivo = "PULLBACK CURTO: Suporte de micro-tendência"
 
-        # ESTRATÉGIA 2: PIVÔ DE BAIXA / RETESTE NA RESISTÊNCIA
-        if direcao == "NEUTRO" and sma_curta <= sma_longa:
-            if atual < suporte and momentum < 0:
+        elif ema_super_fast < ema_fast:
+            # Se rompeu o suporte curto com força
+            if atual < suporte_curto and momentum < -(atp * 0.2):
                 direcao = "PUT"
-                confianca = 90
-                motivo = f"ROMPIMENTO SNIPER: Alvo abaixo de {suporte:.2f}"
-            elif atual >= (resistencia - margem):
+                confianca = 88 if agressividade == "high" else 75
+                motivo = "EXPLOSÃO DE BAIXA: Scalping momentum ativo"
+            # Rejeição em resistência curta
+            elif atual >= (resistencia_curta - (atp * 0.1)):
                 direcao = "PUT"
-                confianca = 84
-                motivo = "ZONA DE VENDA: Rejeição de preço na resistência"
+                confianca = 82
+                motivo = "PULLBACK CURTO: Resistência de micro-tendência"
 
         return {
             "direcao": direcao,
             "confianca": confianca,
-            "estratégia": "Sniper Quant V2.1",
+            "estratégia": "Agressive Scalper V2.5",
             "motivo": motivo,
             "asset": asset
         }
     except Exception as e:
-        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro interno: {str(e)}"}
+        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro: {str(e)}"}
 
 @app.route('/')
 def index():
@@ -82,9 +94,16 @@ def analisar():
     dados = request.get_json(force=True, silent=True)
     if not dados: return jsonify({"error": "No data"}), 400
     
-    resultado = motor_sniper_core(dados.get('asset'), dados.get('contexto_velas', []))
+    # Captura a flag de agressividade enviada pelo frontend
+    config = dados.get('config', {})
+    agressividade = config.get('agressividade', 'low')
     
-    # OTIMIZAÇÃO: Retorno direto do objeto para reduzir latência no JSON.parse do frontend
+    resultado = motor_sniper_core(
+        dados.get('asset'), 
+        dados.get('contexto_velas', []),
+        agressividade=agressividade
+    )
+    
     return jsonify({
         "choices": [{"message": {"content": json.dumps(resultado)}}]
     })
@@ -93,15 +112,15 @@ def analisar():
 def radar():
     dados = request.get_json(force=True, silent=True)
     if not dados or 'pacote_ativos' not in dados:
-        return jsonify({"error": "Formato de radar inválido"}), 400
+        return jsonify({"error": "Radar Fail"}), 400
     
     resultados = []
     for item in dados['pacote_ativos']:
-        analise = motor_sniper_core(item['asset'], item['velas'])
+        # Radar sempre usa agressividade alta para filtrar sinais rápidos
+        analise = motor_sniper_core(item['asset'], item['velas'], agressividade="high")
         if analise['direcao'] != "NEUTRO":
             resultados.append(analise)
     
-    # Ordena por maior confiança e pega os 3 melhores
     top3 = sorted(resultados, key=lambda x: x['confianca'], reverse=True)[:3]
     return jsonify({"top3": top3})
 
