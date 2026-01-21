@@ -6,7 +6,6 @@ class AnaliseGeral {
         this._analisando = false;
         this.ultimoVeredito = { direcao: "NEUTRO", confianca: 0 };
         
-        // Mapeamento estendido para garantir que o Python reconheça o ativo
         this.mapaSimbolos = {
             "VOLATILITY 10 INDEX": "R_10",
             "VOLATILITY 25 INDEX": "R_25",
@@ -28,10 +27,10 @@ class AnaliseGeral {
     adicionarDados(velas, tickBruto = null) {
         if (tickBruto !== null) {
             this.ultimosTicks.push(parseFloat(tickBruto));
-            if (this.ultimosTicks.length > 20) this.ultimosTicks.shift();
+            // Mantemos apenas 10 ticks para sentir a velocidade imediata (Scalper puro)
+            if (this.ultimosTicks.length > 10) this.ultimosTicks.shift();
         }
 
-        // Normalização de chaves para garantir compatibilidade com o Motor Python
         const formatarVela = (v) => ({
             o: parseFloat(v.open || v.o),
             h: parseFloat(v.high || v.h),
@@ -56,34 +55,42 @@ class AnaliseGeral {
                 this.historicoVelas.push(nova);
             }
         }
-        if (this.historicoVelas.length > 100) this.historicoVelas.shift();
+        // Reduzido para 50 para liberar memória e acelerar o processamento
+        if (this.historicoVelas.length > 50) this.historicoVelas.shift();
     }
 
     async obterVereditoCompleto() {
-        // AJUSTE DE ENGENHARIA: Bloqueio por estado de trade ativo ou insuficiência de dados
         if (this._analisando) return null;
         
-        if (this.historicoVelas.length < 20) {
-            console.log(`[AnaliseGeral] Dados insuficientes: ${this.historicoVelas.length}/20`);
+        // AGRESSIVIDADE: Agora ele começa a operar com apenas 10 velas de histórico
+        if (this.historicoVelas.length < 10) {
+            console.log(`[Scalper] Aquecendo motor: ${this.historicoVelas.length}/10`);
             return null;
         }
 
-        if (window.app && app.isTrading) {
-            console.log("[AnaliseGeral] Análise suspensa: Existe um trade em execução.");
-            return null;
-        }
+        if (window.app && app.isTrading) return null;
 
         this._analisando = true;
-        console.log(`[AnaliseGeral] Iniciando análise para ${app.currentAsset}...`);
         
-        // Captura o asset atual do objeto global app
         const assetBruto = app.currentAsset; 
         const assetTecnico = this.mapaSimbolos[assetBruto.toUpperCase()] || assetBruto;
 
+        // CÁLCULO DE MOMENTUM LOCAL (Antes de enviar ao Python)
+        const v = this.historicoVelas;
+        const ultimaVela = v[v.length - 1];
+        const penultimaVela = v[v.length - 2];
+        const direcaoImediata = ultimaVela.c > penultimaVela.c ? "ALTA" : "BAIXA";
+
         const payload = {
             asset: assetTecnico,
-            contexto_velas: this.historicoVelas.slice(-30), // Enviamos 30 para o Python calcular SMA20
-            config: { sniper_mode: true, min_confidence: 70 }
+            // Enviamos apenas 15 velas para o Python focar no AGORA
+            contexto_velas: this.historicoVelas.slice(-15),
+            dados_ticks: this.ultimosTicks, // Ticks para sentir a força do "vapt-vupt"
+            config: { 
+                sniper_mode: true, 
+                agressividade: "high", // Flag para o Python mudar a estratégia
+                min_confidence: 65     // Reduzido para entrar em mais operações
+            }
         };
 
         try {
@@ -98,27 +105,24 @@ class AnaliseGeral {
             const data = await response.json();
             let res = data;
             
-            // Tratamento robusto para a resposta do motor
             if (data.choices && data.choices[0].message.content) {
                 const content = data.choices[0].message.content;
-                // Se a IA retornar como string JSON, nós parseamos. Se já for objeto, usamos direto.
                 res = typeof content === 'string' ? JSON.parse(content.replace(/```json|```/g, "")) : content;
             }
 
             this.ultimoVeredito = {
                 direcao: (res.direcao || "NEUTRO").toUpperCase(),
                 confianca: parseInt(res.confianca || 0),
-                motivo: res.motivo || "Aguardando sinal",
-                estratégia: res.estratégia || "Sniper Quant"
+                motivo: res.motivo || "Análise rápida concluída",
+                estratégia: "Agressive Scalper V2"
             };
 
-            console.log(`[AnaliseGeral] Veredito: ${this.ultimoVeredito.direcao} (${this.ultimoVeredito.confianca}%)`);
             this._analisando = false;
             return this.ultimoVeredito;
         } catch (e) {
             this._analisando = false;
-            console.warn("[AnaliseGeral] Erro na Engine Sniper:", e.message);
-            return { direcao: "ERRO_CONEXAO", confianca: 0, motivo: "Falha de comunicação com o servidor" };
+            console.warn("[Scalper] Engine falhou, operando em modo offline...");
+            return { direcao: "NEUTRO", confianca: 0 };
         }
     }
 }
