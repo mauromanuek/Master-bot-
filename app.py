@@ -10,8 +10,9 @@ LINK_DO_BOT = "https://mauromanuek.github.io/Master-bot-/"
 
 def motor_sniper_core(asset, velas):
     """
-    Core Engine: Lógica de Pivôs e Rejeição de Preço
+    Core Engine: Lógica de Pivôs, Rejeição e Momentum Adaptativo
     """
+    # BUFFER: Aumentado para garantir estabilidade dos cálculos matemáticos
     if not velas or len(velas) < 20:
         return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Buffer incompleto"}
 
@@ -21,50 +22,56 @@ def motor_sniper_core(asset, velas):
         minimas = [float(v.get('l', 0)) for v in velas]
         
         atual = fechamentos[-1]
-        # Médias Rápidas para Tendência
-        sma_curta = sum(fechamentos[-10:]) / 10
+        
+        # MÉDIAS SNIPER: Identificação de Micro-Tendência
+        sma_curta = sum(fechamentos[-8:]) / 8  # Mais rápida para Scalping
         sma_longa = sum(fechamentos[-20:]) / 20
         
-        # Zonas de Sniper (Últimas 15 velas para Scalping)
+        # ZONAS DE PREÇO (Dinâmicas)
         resistencia = max(maximas[-15:-1])
         suporte = min(minimas[-15:-1])
-        range_volatilidade = (resistencia - suporte) * 0.15 # 15% de margem
+        
+        # Ajuste Adaptativo: Margem reduzida para 10% para aumentar a sensibilidade sniper
+        margem = (resistencia - suporte) * 0.10
 
         direcao = "NEUTRO"
         confianca = 0
-        motivo = "Mercado em acumulação (sem tendência clara)"
+        motivo = "Aguardando definição de zona de impacto"
 
-        # ESTRATÉGIA 1: PIVÔ DE ALTA (Tendência + Rompimento)
-        if sma_curta > sma_longa:
-            if atual > resistencia:
-                direcao = "CALL"
-                confianca = 88
-                motivo = f"SNIPER: Rompimento de Topo em {resistencia:.2f}"
-            elif atual <= (suporte + range_volatilidade):
-                direcao = "CALL"
-                confianca = 82
-                motivo = "REJEIÇÃO: Compra em zona de fundo ascendente"
+        # CÁLCULO DE MOMENTUM (Força da última vela)
+        momentum = atual - fechamentos[-2]
 
-        # ESTRATÉGIA 2: PIVÔ DE BAIXA (Tendência + Rompimento)
-        elif sma_curta < sma_longa:
-            if atual < suporte:
+        # ESTRATÉGIA 1: PIVÔ DE ALTA / REJEIÇÃO NO SUPORTE
+        if sma_curta >= sma_longa:
+            if atual > resistencia and momentum > 0:
+                direcao = "CALL"
+                confianca = 90
+                motivo = f"ROMPIMENTO SNIPER: Alvo acima de {resistencia:.2f}"
+            elif atual <= (suporte + margem):
+                direcao = "CALL"
+                confianca = 84
+                motivo = "ZONA DE COMPRA: Rejeição de preço no suporte"
+
+        # ESTRATÉGIA 2: PIVÔ DE BAIXA / RETESTE NA RESISTÊNCIA
+        if direcao == "NEUTRO" and sma_curta <= sma_longa:
+            if atual < suporte and momentum < 0:
                 direcao = "PUT"
-                confianca = 88
-                motivo = f"SNIPER: Rompimento de Fundo em {suporte:.2f}"
-            elif atual >= (resistencia - range_volatilidade):
+                confianca = 90
+                motivo = f"ROMPIMENTO SNIPER: Alvo abaixo de {suporte:.2f}"
+            elif atual >= (resistencia - margem):
                 direcao = "PUT"
-                confianca = 82
-                motivo = "RETESTE: Venda em zona de topo descendente"
+                confianca = 84
+                motivo = "ZONA DE VENDA: Rejeição de preço na resistência"
 
         return {
             "direcao": direcao,
             "confianca": confianca,
-            "estratégia": "Sniper Quant V2",
+            "estratégia": "Sniper Quant V2.1",
             "motivo": motivo,
             "asset": asset
         }
     except Exception as e:
-        return {"direcao": "NEUTRO", "confianca": 0, "motivo": str(e)}
+        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro interno: {str(e)}"}
 
 @app.route('/')
 def index():
@@ -77,12 +84,11 @@ def analisar():
     
     resultado = motor_sniper_core(dados.get('asset'), dados.get('contexto_velas', []))
     
-    # Mantém o formato compatível com o seu AnaliseGeral.js
+    # OTIMIZAÇÃO: Retorno direto do objeto para reduzir latência no JSON.parse do frontend
     return jsonify({
         "choices": [{"message": {"content": json.dumps(resultado)}}]
     })
 
-# MISSÃO 3: NOVO ENDPOINT PARA O RADAR TOP 3
 @app.route('/radar', methods=['POST'])
 def radar():
     dados = request.get_json(force=True, silent=True)
