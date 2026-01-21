@@ -1,8 +1,7 @@
 const DigitModule = {
     tickBuffer: [],
-    maxTicks: 25, // Reduzido para maior sensibilidade a micro-tendências
-    isAnalysisRunning: false,
-    isTrading: false,
+    maxTicks: 25, 
+    isActive: false,
     currentProfit: 0,
     stats: { wins: 0, losses: 0 },
     _handler: null,
@@ -52,44 +51,65 @@ const DigitModule = {
                     </div>
                 </div>
 
-                <button id="btn-d-toggle" onclick="DigitModule.analyze()" class="w-full py-4 bg-yellow-600 hover:bg-yellow-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Operação Digits</button>
+                <button id="btn-d-toggle" onclick="DigitModule.toggle()" class="w-full py-4 bg-yellow-600 hover:bg-yellow-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Operação Digits</button>
                 
                 <div id="d-status" class="bg-black p-3 rounded-xl h-24 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> Aguardando sinal...</p>
+                    <p class="text-gray-600 italic">> Aguardando ativação...</p>
                 </div>
             </div>`;
     },
 
-    analyze() {
-        this.isAnalysisRunning = !this.isAnalysisRunning;
+    log(msg, color = "text-gray-400") {
+        const status = document.getElementById('d-status');
+        if (status) {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            status.innerHTML += `<p class="${color}">[${time}] ${msg}</p>`;
+            status.scrollTop = status.scrollHeight;
+        }
+    },
+
+    toggle() {
+        this.isActive = !this.isActive;
         const btn = document.getElementById('btn-d-toggle');
         const indicator = document.getElementById('d-indicator');
         
-        if (this.isAnalysisRunning) {
+        if (this.isActive) {
             btn.innerText = "PARAR OPERAÇÃO";
             btn.classList.replace('bg-yellow-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-yellow-500');
             indicator.classList.add('animate-pulse');
             this.tickBuffer = [];
-            this.setupListeners();
-            this.log(`ANÁLISE DE DÍGITOS INICIADA`, "text-yellow-400 font-bold");
+            this.setupListener();
+            this.log(`ESTATÍSTICA DE TICKS INICIADA`, "text-yellow-400 font-bold");
+            
+            // Ativa o stream de ticks no DerivAPI
+            DerivAPI.subscribeTicks((tick) => this.processTick(tick));
         } else {
             btn.innerText = "Iniciar Operação Digits";
             btn.classList.replace('bg-red-600', 'bg-yellow-600');
             indicator.classList.replace('bg-yellow-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
-            this.isTrading = false;
+            DerivAPI.unsubscribeTicks();
+            this.log("OPERAÇÃO FINALIZADA", "text-gray-500");
         }
     },
 
-    processTick(tickData) {
-        if (!this.isAnalysisRunning || this.isTrading) return;
+    setupListener() {
+        if (this._handler) document.removeEventListener('contract_finished', this._handler);
+        this._handler = (e) => {
+            if (e.detail && e.detail.prefix === 'd') {
+                this.handleContractResult(e.detail.profit);
+            }
+        };
+        document.addEventListener('contract_finished', this._handler);
+    },
 
-        // Extrai o último dígito
-        const quote = tickData.quote.toString();
-        const lastDigit = parseInt(quote.slice(-1));
-        
+    processTick(tick) {
+        if (!this.isActive || app.isTrading) return;
+
+        const lastDigit = parseInt(tick.quote.toString().slice(-1));
         this.tickBuffer.push(lastDigit);
+        
         if (this.tickBuffer.length > this.maxTicks) this.tickBuffer.shift();
         
         this.updateUI();
@@ -106,26 +126,35 @@ const DigitModule = {
         const pOver = Math.round((over5 / total) * 100);
         const pUnder = Math.round((under5 / total) * 100);
 
-        document.getElementById('perc-over').innerText = pOver + "%";
-        document.getElementById('perc-under').innerText = pUnder + "%";
-        document.getElementById('bar-over').style.width = pOver + "%";
-        document.getElementById('bar-under').style.width = pUnder + "%";
+        const elOver = document.getElementById('perc-over');
+        const elUnder = document.getElementById('perc-under');
+        
+        if(elOver) elOver.innerText = pOver + "%";
+        if(elUnder) elUnder.innerText = pUnder + "%";
+        
+        const bOver = document.getElementById('bar-over');
+        const bUnder = document.getElementById('bar-under');
+        
+        if(bOver) bOver.style.width = pOver + "%";
+        if(bUnder) bUnder.style.width = pUnder + "%";
 
-        // Feedback visual de pressão estatística
-        document.getElementById('box-over').style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
-        document.getElementById('box-under').style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
+        // Alerta visual de alta probabilidade
+        const boxOver = document.getElementById('box-over');
+        const boxUnder = document.getElementById('box-under');
+        if(boxOver) boxOver.style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
+        if(boxUnder) boxUnder.style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
     },
 
     checkEntry() {
-        if (this.tickBuffer.length < 20 || this.isTrading) return;
+        if (this.tickBuffer.length < 20 || app.isTrading) return;
 
         const total = this.tickBuffer.length;
         const pOver = (this.tickBuffer.filter(d => d > 5).length / total) * 100;
         const pUnder = (this.tickBuffer.filter(d => d < 5).length / total) * 100;
         
-        const stake = document.getElementById('d-stake').value;
+        const stake = document.getElementById('d-stake')?.value || 1;
 
-        // Estratégia: Se um lado domina 75% dos últimos 25 ticks, entramos a favor da tendência
+        // GATILHO: Dominância de 75% nos últimos ticks
         if (pOver >= 75) {
             this.execute('DIGITOVER', stake);
         } else if (pUnder >= 75) {
@@ -134,36 +163,37 @@ const DigitModule = {
     },
 
     execute(type, stake) {
-        this.isTrading = true;
-        this.log(`ENTRADA ESTATÍSTICA: ${type}`, "text-green-400 font-bold");
+        app.isTrading = true;
+        this.log(`DISPARO ESTATÍSTICO: ${type}`, "text-yellow-500 font-bold");
 
-        const params = { barrier: "5", duration: 1, duration_unit: 't' };
+        // Parâmetros específicos para mercado de dígitos
+        const params = { 
+            barrier: "5", 
+            duration: 1, 
+            duration_unit: 't' 
+        };
         
         DerivAPI.buy(type, stake, 'd', (res) => {
             if (res.error) {
-                this.log(`ERRO: ${res.error.message}`, "text-red-500");
-                this.isTrading = false;
+                this.log(`FALHA: ${res.error.message}`, "text-red-500");
+                app.isTrading = false;
             }
         }, params);
     },
 
     handleContractResult(profit) {
+        // Maestro já limpou app.isTrading
         this.currentProfit += profit;
-        const color = profit > 0 ? "text-green-400" : "text-red-400";
-        this.log(`RESULTADO: ${profit > 0 ? 'WIN' : 'LOSS'} (${profit.toFixed(2)})`, color);
         
-        // Pequena pausa para o mercado "respirar" antes da próxima leitura
+        const color = profit > 0 ? "text-green-400" : "text-red-400";
+        this.log(`FIM: ${profit > 0 ? 'WIN' : 'LOSS'} (+$${profit.toFixed(2)})`, color);
+        
+        // Limpa buffer para evitar entradas seguidas baseadas em dados velhos
+        this.tickBuffer = [];
+        
+        // Proteção de 3 segundos
         setTimeout(() => {
-            this.isTrading = false;
-            this.tickBuffer = []; // Limpa para nova amostragem pura
-        }, 2000);
-    },
-
-    log(msg, color = "text-gray-400") {
-        const status = document.getElementById('d-status');
-        if (status) {
-            status.innerHTML += `<p class="${color}">> ${msg}</p>`;
-            status.scrollTop = status.scrollHeight;
-        }
+            if (this.isActive) this.log("REINICIANDO AMOSTRAGEM...", "text-gray-600");
+        }, 3000);
     }
 };
