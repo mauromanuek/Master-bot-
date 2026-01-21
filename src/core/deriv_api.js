@@ -194,7 +194,7 @@ const DerivAPI = {
 
     subscribeTicks(callback) {
         if (!this.isAuthorized) return;
-        this.callbacks['tick'] = callback;
+        this.callbacks['tick'] = callback; // Armazena para uso no handleResponses
         this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
     },
 
