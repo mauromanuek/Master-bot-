@@ -96,16 +96,15 @@ const DerivAPI = {
         }));
     },
 
-    /**
-     * AJUSTE SNIPER: Otimização de tempo de expiração
-     */
     buy(type, stake, prefix, callback, extraParams = {}) {
         if (!this.isAuthorized) return;
+
+        // AJUSTE DE ENGENHARIA: Bloqueio imediato no núcleo do app para evitar dupla compra
+        if (window.app) app.isTrading = true;
 
         this.callbacks['buy'] = callback;
         this._pendingPrefix = prefix || 'm';
 
-        // Sniper Mode: Se for ativo de volatilidade comum, usa 1 minuto. Se for (1s), usa 5 ticks.
         const isFastAsset = this.currentSymbol.includes('1Z') || this.currentSymbol.includes('1HZ');
         
         const request = {
@@ -116,7 +115,6 @@ const DerivAPI = {
                 basis: 'stake',
                 contract_type: type,
                 currency: 'USD',
-                // Dinâmico: Ticks para rápidos, Minutos para estáveis
                 duration: extraParams.duration || (isFastAsset ? 5 : 1),
                 duration_unit: extraParams.duration_unit || (isFastAsset ? 't' : 'm'), 
                 symbol: this.currentSymbol,
@@ -133,13 +131,10 @@ const DerivAPI = {
             this.candleSubscriptionId = data.subscription.id;
         }
 
-        // Histórico inicial (Array)
         if (data.msg_type === 'candles' && data.candles) {
             if (window.app && app.analista) app.analista.adicionarDados(data.candles);
             if (this.callbacks['candles']) this.callbacks['candles'](data.candles);
         } 
-        
-        // Vela em tempo real (OHLC)
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol) {
                 const normalized = {
@@ -153,8 +148,6 @@ const DerivAPI = {
                 if (this.callbacks['candles']) this.callbacks['candles'](normalized);
             }
         }
-
-        // Ticks
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
                 if (window.app && app.analista) app.analista.adicionarDados(null, data.tick.quote);
@@ -163,7 +156,6 @@ const DerivAPI = {
             }
         }
 
-        // Saldo
         if (data.msg_type === 'balance') {
             const val = data.balance.balance;
             const el = document.getElementById('acc-balance');
@@ -171,7 +163,6 @@ const DerivAPI = {
             if (window.app) app.balance = val;
         }
 
-        // Resultado do Contrato
         if (data.msg_type === 'proposal_open_contract') {
             const c = data.proposal_open_contract;
             if (!c || !c.is_sold) return;
@@ -181,18 +172,26 @@ const DerivAPI = {
             
             delete this.activeContracts[c.contract_id];
             
-            // ESSENCIAL: Notifica a interface do resultado para atualizar W/L
-            if (window.app) app.updateModuleProfit(profit, prefix);
+            // AJUSTE DE ENGENHARIA: Reset do estado de trade ANTES da emissão do evento
+            if (window.app) {
+                app.isTrading = false;
+                app.updateModuleProfit(profit, prefix);
+            }
             
             document.dispatchEvent(new CustomEvent('contract_finished', { 
                 detail: { prefix, profit, contract: c } 
             }));
             
             this.socket.send(JSON.stringify({ balance: 1 }));
+            this.log(`Contrato Finalizado. Lucro: ${profit}`);
         }
 
         if (data.msg_type === 'buy' && !data.error) {
             this.activeContracts[data.buy.contract_id] = this._pendingPrefix;
+        }
+        // Caso ocorra erro na compra, libera o estado global
+        if (data.msg_type === 'buy' && data.error) {
+            if (window.app) app.isTrading = false;
         }
     },
 
