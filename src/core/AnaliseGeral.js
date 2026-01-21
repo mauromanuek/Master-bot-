@@ -60,10 +60,21 @@ class AnaliseGeral {
     }
 
     async obterVereditoCompleto() {
-        // Reduzi para 20 velas para o Scalping Sniper disparar mais rápido
-        if (this._analisando || this.historicoVelas.length < 20) return null;
+        // AJUSTE DE ENGENHARIA: Bloqueio por estado de trade ativo ou insuficiência de dados
+        if (this._analisando) return null;
+        
+        if (this.historicoVelas.length < 20) {
+            console.log(`[AnaliseGeral] Dados insuficientes: ${this.historicoVelas.length}/20`);
+            return null;
+        }
+
+        if (window.app && app.isTrading) {
+            console.log("[AnaliseGeral] Análise suspensa: Existe um trade em execução.");
+            return null;
+        }
 
         this._analisando = true;
+        console.log(`[AnaliseGeral] Iniciando análise para ${app.currentAsset}...`);
         
         // Captura o asset atual do objeto global app
         const assetBruto = app.currentAsset; 
@@ -101,12 +112,13 @@ class AnaliseGeral {
                 estratégia: res.estratégia || "Sniper Quant"
             };
 
+            console.log(`[AnaliseGeral] Veredito: ${this.ultimoVeredito.direcao} (${this.ultimoVeredito.confianca}%)`);
             this._analisando = false;
             return this.ultimoVeredito;
         } catch (e) {
             this._analisando = false;
-            console.error("Erro na Engine Sniper:", e);
-            return { direcao: "NEUTRO", confianca: 0, motivo: "Erro de conexão com servidor" };
+            console.warn("[AnaliseGeral] Erro na Engine Sniper:", e.message);
+            return { direcao: "ERRO_CONEXAO", confianca: 0, motivo: "Falha de comunicação com o servidor" };
         }
     }
 }
