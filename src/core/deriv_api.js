@@ -8,7 +8,6 @@ const DerivAPI = {
     isSubscribing: false,
     _pendingPrefix: 'm',
 
-    // ATUALIZADO: Incluindo índices de 1s para evitar erro de "Símbolo Inválido"
     mapaSimbolos: {
         "VOLATILITY 10 INDEX": "R_10",
         "VOLATILITY 25 INDEX": "R_25",
@@ -64,8 +63,7 @@ const DerivAPI = {
         
         this.log(`Ativo: ${symbolFormatado}`);
         
-        // Limpa apenas o necessário para não bugar o Radar
-        this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc"] }));
+        this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
         this.currentSymbol = symbolFormatado;
         
@@ -88,7 +86,7 @@ const DerivAPI = {
         this.socket.send(JSON.stringify({
             ticks_history: this.currentSymbol,
             adjust_start_time: 1,
-            count: 100, // Mantido 100 para o histórico do Python
+            count: 100, 
             end: "latest",
             granularity: 60,
             style: "candles",
@@ -99,7 +97,6 @@ const DerivAPI = {
     buy(type, stake, prefix, callback, extraParams = {}) {
         if (!this.isAuthorized) return;
 
-        // AJUSTE DE ENGENHARIA: Bloqueio imediato no núcleo do app para evitar dupla compra
         if (window.app) app.isTrading = true;
 
         this.callbacks['buy'] = callback;
@@ -152,6 +149,7 @@ const DerivAPI = {
             if (data.tick.symbol === this.currentSymbol) {
                 if (window.app && app.analista) app.analista.adicionarDados(null, data.tick.quote);
                 if (window.DigitModule) DigitModule.processTick(data.tick);
+                if (this.callbacks['tick']) this.callbacks['tick'](data.tick);
                 document.dispatchEvent(new CustomEvent('tick_update', { detail: data.tick }));
             }
         }
@@ -172,7 +170,6 @@ const DerivAPI = {
             
             delete this.activeContracts[c.contract_id];
             
-            // AJUSTE DE ENGENHARIA: Reset do estado de trade ANTES da emissão do evento
             if (window.app) {
                 app.isTrading = false;
                 app.updateModuleProfit(profit, prefix);
@@ -189,10 +186,22 @@ const DerivAPI = {
         if (data.msg_type === 'buy' && !data.error) {
             this.activeContracts[data.buy.contract_id] = this._pendingPrefix;
         }
-        // Caso ocorra erro na compra, libera o estado global
+        
         if (data.msg_type === 'buy' && data.error) {
             if (window.app) app.isTrading = false;
         }
+    },
+
+    subscribeTicks(callback) {
+        if (!this.isAuthorized) return;
+        this.callbacks['tick'] = callback;
+        this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
+    },
+
+    unsubscribeTicks() {
+        if (!this.isAuthorized) return;
+        this.socket.send(JSON.stringify({ forget_all: "ticks" }));
+        delete this.callbacks['tick'];
     },
 
     log(msg, type = "info") {
