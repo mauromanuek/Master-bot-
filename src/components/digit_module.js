@@ -1,6 +1,6 @@
 const DigitModule = {
     tickBuffer: [],
-    maxTicks: 20, // Reduzido para focar na micro-volatilidade recente
+    maxTicks: 15, // SNIPER: Reduzido de 20 para 15 para focar na explosão imediata
     isActive: false,
     currentProfit: 0,
     stats: { wins: 0, losses: 0 },
@@ -54,7 +54,7 @@ const DigitModule = {
                 <button id="btn-d-toggle" onclick="DigitModule.toggle()" class="w-full py-4 bg-yellow-600 hover:bg-yellow-500 rounded-xl font-bold uppercase shadow-lg transition-all active:scale-95 text-white">Iniciar Operação Digits</button>
                 
                 <div id="d-status" class="bg-black p-3 rounded-xl h-24 overflow-y-auto text-[10px] font-mono text-gray-400 border border-gray-900 shadow-inner custom-scrollbar">
-                    <p class="text-gray-600 italic">> Aguardando stream de ticks...</p>
+                    <p class="text-gray-600 italic">> Aguardando ticks da DerivAPI...</p>
                 </div>
             </div>`;
     },
@@ -72,28 +72,23 @@ const DigitModule = {
         this.isActive = !this.isActive;
         const btn = document.getElementById('btn-d-toggle');
         const indicator = document.getElementById('d-indicator');
-        const assetText = document.getElementById('d-current-asset');
         
         if (this.isActive) {
             btn.innerText = "PARAR OPERAÇÃO";
             btn.classList.replace('bg-yellow-600', 'bg-red-600');
             indicator.classList.replace('bg-gray-600', 'bg-yellow-500');
             indicator.classList.add('animate-pulse');
-            if(assetText) assetText.innerText = app.currentAsset;
             
             this.tickBuffer = [];
             this.setupListener();
-            this.log(`ANALISANDO TICKS: ${app.currentAsset}`, "text-yellow-400 font-bold");
-            
-            // Subscrição via Maestro API
-            DerivAPI.subscribeTicks((tick) => this.processTick(tick));
+            this.log(`MODO DIGIT SNIPER ATIVADO`, "text-yellow-400 font-bold");
         } else {
             btn.innerText = "Iniciar Operação Digits";
             btn.classList.replace('bg-red-600', 'bg-yellow-600');
             indicator.classList.replace('bg-yellow-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
-            DerivAPI.unsubscribeTicks();
             this.log("SISTEMA PAUSADO", "text-gray-500");
+            app.isTrading = false;
         }
     },
 
@@ -101,6 +96,7 @@ const DigitModule = {
         if (this._handler) document.removeEventListener('contract_finished', this._handler);
         this._handler = (e) => {
             if (e.detail && e.detail.prefix === 'd') {
+                // A DerivAPI dispara esse evento no milissegundo do fechamento
                 this.handleContractResult(e.detail.profit);
             }
         };
@@ -108,51 +104,48 @@ const DigitModule = {
     },
 
     processTick(tick) {
-        if (!this.isActive || app.isTrading) return;
+        if (!this.isActive) return;
 
-        // Pega o último dígito do quote
         const lastDigit = parseInt(tick.quote.toString().slice(-1));
         this.tickBuffer.push(lastDigit);
         
-        // Mantém apenas o histórico necessário para scalping rápido
         if (this.tickBuffer.length > this.maxTicks) this.tickBuffer.shift();
         
         this.updateUI();
-        this.checkEntry();
+
+        // Só tenta entrar se o bot não estiver em uma operação aberta
+        if (!app.isTrading) {
+            this.checkEntry();
+        }
     },
 
     updateUI() {
         const total = this.tickBuffer.length;
         if (total < 5) return;
 
-        // Cálculo estatístico
         const over5 = this.tickBuffer.filter(d => d > 5).length;
         const under5 = this.tickBuffer.filter(d => d < 5).length;
         
         const pOver = Math.round((over5 / total) * 100);
         const pUnder = Math.round((under5 / total) * 100);
 
-        const elOver = document.getElementById('perc-over');
-        const elUnder = document.getElementById('perc-under');
-        if(elOver) elOver.innerText = pOver + "%";
-        if(elUnder) elUnder.innerText = pUnder + "%";
+        document.getElementById('perc-over').innerText = pOver + "%";
+        document.getElementById('perc-under').innerText = pUnder + "%";
         
-        const bOver = document.getElementById('bar-over');
-        const bUnder = document.getElementById('bar-under');
-        if(bOver) bOver.style.width = pOver + "%";
-        if(bUnder) bUnder.style.width = pUnder + "%";
+        document.getElementById('bar-over').style.width = pOver + "%";
+        document.getElementById('bar-under').style.width = pUnder + "%";
 
         const boxOver = document.getElementById('box-over');
         const boxUnder = document.getElementById('box-under');
         
-        // Feedback visual de zona de tiro (70%+)
-        if(boxOver) boxOver.style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
-        if(boxUnder) boxUnder.style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
+        // Alerta visual de gatilho (70%+)
+        boxOver.style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
+        boxUnder.style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
     },
 
     checkEntry() {
-        // Amostragem mínima de 12 ticks para agressividade segura
-        if (this.tickBuffer.length < 12 || app.isTrading) return;
+        // Reduzido para 10 ticks: sniper de alta frequência
+        if (this.tickBuffer.length < 10 || app.isTrading) return;
 
         const total = this.tickBuffer.length;
         const pOver = (this.tickBuffer.filter(d => d > 5).length / total) * 100;
@@ -160,7 +153,6 @@ const DigitModule = {
         
         const stake = document.getElementById('d-stake')?.value || 1;
 
-        // GATILHO AGRESSIVO: 70% de dominância
         if (pOver >= 70) {
             this.execute('DIGITOVER', stake);
         } else if (pUnder >= 70) {
@@ -172,9 +164,8 @@ const DigitModule = {
         if (app.isTrading) return;
         
         app.isTrading = true;
-        this.log(`TIRO CONFIRMADO: ${type}`, "text-yellow-500 font-bold");
+        this.log(`TIRO EXECUTADO: ${type}`, "text-yellow-500 font-bold");
 
-        // Configuração para 1 Tick (Máxima velocidade)
         const params = { 
             barrier: "5", 
             duration: 1, 
@@ -183,8 +174,10 @@ const DigitModule = {
         
         DerivAPI.buy(type, stake, 'd', (res) => {
             if (res.error) {
-                this.log(`API REJEITOU: ${res.error.message}`, "text-red-500");
+                this.log(`API BUSY: ${res.error.message}`, "text-red-500");
                 app.isTrading = false;
+            } else {
+                this.log("AGUARDANDO RESULTADO TICK...", "text-blue-400 animate-pulse");
             }
         }, params);
     },
@@ -192,15 +185,20 @@ const DigitModule = {
     handleContractResult(profit) {
         this.currentProfit += profit;
         
+        if (profit > 0) this.stats.wins++;
+        else this.stats.losses++;
+
         const color = profit > 0 ? "text-green-400" : "text-red-400";
-        this.log(`WIN: +$${profit.toFixed(2)}`, color);
+        const icon = profit > 0 ? "✅" : "❌";
+        this.log(`${icon} RESULTADO: $${profit.toFixed(2)}`, `${color} font-bold`);
         
-        // Flush do buffer para ler o novo padrão do mercado após o contrato
+        // Limpa o buffer para ler o novo fluxo de mercado (Fuga de manipulação)
         this.tickBuffer = [];
         
-        // Liberação rápida para nova análise
-        setTimeout(() => {
-            if (this.isActive) this.log("RESET DE BUFFER - LENDO NOVOS TICKS", "text-gray-600");
-        }, 1000);
+        // Liberação instantânea para ler o próximo padrão
+        app.isTrading = false;
+        
+        // Atualiza UI Global
+        if (window.app) app.updateModuleProfit(profit, 'd');
     }
 };
