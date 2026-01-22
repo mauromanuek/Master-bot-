@@ -27,7 +27,6 @@ const DerivAPI = {
     connect(token, callback) {
         if (this.socket) { try { this.socket.close(); } catch(e) {} }
         
-        // Conexão oficial via WebSocket da Deriv
         this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
 
         this.socket.onopen = () => {
@@ -38,8 +37,8 @@ const DerivAPI = {
         this.socket.onmessage = (msg) => {
             const data = JSON.parse(msg.data);
             
-            // FILTRO DE ISOLAMENTO: O req_id separa as consultas do RADAR do fluxo principal.
-            if (data.req_id) return; 
+            // O req_id isola o Radar para não travar o fluxo principal
+            if (data.req_id && data.msg_type !== 'proposal_open_contract') return; 
 
             if (data.error) {
                 if (data.error.code === 'AlreadySubscribed') return; 
@@ -51,11 +50,8 @@ const DerivAPI = {
             if (data.msg_type === 'authorize') {
                 this.isAuthorized = true;
                 this.log("Autorização de conta confirmada.");
-                // Assina atualizações de saldo e contratos abertos
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 this.socket.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
-                
-                // SNIPER: Inicia a assinatura do gráfico com o buffer otimizado
                 this.subscribeCandles(this.callbacks['candles']);
             }
 
@@ -64,57 +60,31 @@ const DerivAPI = {
         };
     },
 
-    /**
-     * SNIPER RADAR: Busca histórico de forma isolada e ultra-leve.
-     * Reduzido de 30 para 10 candles para evitar erro 100/10.
-     */
     async getHistoryIsolated(symbol, count = 10) {
         return new Promise((resolve) => {
             if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return resolve(null);
-
             const reqId = Math.floor(Math.random() * 100000);
-            
             const tempHandler = (msg) => {
                 const res = JSON.parse(msg.data);
                 if (res.req_id === reqId) {
                     this.socket.removeEventListener('message', tempHandler);
-                    if (res.error) {
-                        resolve(null);
-                    } else {
-                        resolve(res.candles || null);
-                    }
+                    resolve(res.error ? null : (res.candles || null));
                 }
             };
-
             this.socket.addEventListener('message', tempHandler);
-            
             this.socket.send(JSON.stringify({
-                ticks_history: symbol,
-                adjust_start_time: 1,
-                count: count, // Apenas 10 velas para o radar sniper
-                end: "latest",
-                granularity: 60,
-                style: "candles",
-                req_id: reqId 
+                ticks_history: symbol, count: count, end: "latest", granularity: 60, style: "candles", req_id: reqId 
             }));
-
-            // Timeout de segurança
-            setTimeout(() => {
-                this.socket.removeEventListener('message', tempHandler);
-                resolve(null);
-            }, 5000);
+            setTimeout(() => { this.socket.removeEventListener('message', tempHandler); resolve(null); }, 5000);
         });
     },
 
     changeSymbol(newSymbol) {
         if (!newSymbol) return;
         const symbolFormatado = this.mapaSimbolos[newSymbol.toUpperCase()] || newSymbol;
-        
         if (this.currentSymbol === symbolFormatado && this.candleSubscriptionId) return;
         
         this.log(`Trocando fluxo para: ${symbolFormatado}`);
-        
-        // Limpa todas as assinaturas anteriores para economizar banda e evitar conflito
         this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
         this.currentSymbol = symbolFormatado;
@@ -124,7 +94,6 @@ const DerivAPI = {
             if (app.analista) app.analista.limparHistorico();
         }
 
-        // Delay para garantir que o 'forget_all' foi processado pela Deriv
         setTimeout(() => {
             this.subscribeCandles(this.callbacks['candles']);
             this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
@@ -132,22 +101,12 @@ const DerivAPI = {
         }, 300);
     },
 
-    /**
-     * SNIPER: Assina o fluxo de candles.
-     * Modificado para pedir apenas 10 velas iniciais em vez de 100.
-     */
     subscribeCandles(callback) {
         if (!this.isAuthorized || !this.currentSymbol) return;
         if (callback) this.callbacks['candles'] = callback;
         
         this.socket.send(JSON.stringify({
-            ticks_history: this.currentSymbol,
-            adjust_start_time: 1,
-            count: 10, // REDUZIDO: Pede apenas 10 candles para disparo imediato do sniper
-            end: "latest",
-            granularity: 60,
-            style: "candles",
-            subscribe: 1
+            ticks_history: this.currentSymbol, count: 10, end: "latest", granularity: 60, style: "candles", subscribe: 1
         }));
     },
 
@@ -183,26 +142,17 @@ const DerivAPI = {
             this.candleSubscriptionId = data.subscription.id;
         }
 
-        // Tratamento de Candles Históricos e do Primeiro Stream
         if (data.msg_type === 'candles' && data.candles) {
             if (window.app && app.analista) app.analista.adicionarDados(data.candles);
             if (this.callbacks['candles']) this.callbacks['candles'](data.candles);
         } 
-        // Tratamento de Candles em tempo real (OHLC)
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol) {
-                const normalized = {
-                    e: data.ohlc.open_time,
-                    o: data.ohlc.open,
-                    h: data.ohlc.high,
-                    l: data.ohlc.low,
-                    c: data.ohlc.close
-                };
+                const normalized = { e: data.ohlc.open_time, o: data.ohlc.open, h: data.ohlc.high, l: data.ohlc.low, c: data.ohlc.close };
                 if (window.app && app.analista) app.analista.adicionarDados(normalized);
                 if (this.callbacks['candles']) this.callbacks['candles'](normalized);
             }
         }
-        // Tratamento de Ticks Individuais (Análise de Micro-Momentum)
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
                 if (window.app && app.analista) app.analista.adicionarDados(null, data.tick.quote);
@@ -219,30 +169,49 @@ const DerivAPI = {
             if (window.app) app.balance = val;
         }
 
+        // SOLUÇÃO PARA O ATRASO: Monitoramento agressivo do contrato
         if (data.msg_type === 'proposal_open_contract') {
             const c = data.proposal_open_contract;
-            if (!c || !c.is_sold) return;
+            if (!c) return;
 
-            const prefix = this.activeContracts[c.contract_id] || 'm';
-            const profit = parseFloat(c.profit);
-            
-            delete this.activeContracts[c.contract_id];
-            
-            if (window.app) {
-                app.isTrading = false;
-                app.updateModuleProfit(profit, prefix);
+            // Log de progresso (Opcional: remove se quiser log limpo)
+            if (!c.is_sold && window.app) {
+                document.getElementById('status-text').innerText = `Contrato Ativo: Profit ${c.profit}`;
             }
-            
-            document.dispatchEvent(new CustomEvent('contract_finished', { 
-                detail: { prefix, profit, contract: c } 
-            }));
-            
-            this.socket.send(JSON.stringify({ balance: 1 }));
-            this.log(`Operação Finalizada [${prefix}]. Payout: ${profit}`);
+
+            if (c.is_sold) {
+                const prefix = this.activeContracts[c.contract_id] || 'm';
+                const profit = parseFloat(c.profit);
+                
+                delete this.activeContracts[c.contract_id];
+                
+                if (window.app) {
+                    app.isTrading = false;
+                    app.updateModuleProfit(profit, prefix);
+                }
+                
+                document.dispatchEvent(new CustomEvent('contract_finished', { 
+                    detail: { prefix, profit, contract: c } 
+                }));
+                
+                // GATILHO DE ATUALIZAÇÃO IMEDIATA:
+                this.socket.send(JSON.stringify({ balance: 1 })); // Força atualização do saldo
+                if(c.subscription_id) this.socket.send(JSON.stringify({ forget: c.subscription_id })); // Limpa fluxo
+                
+                this.log(`Finalizado [${prefix}]. Payout: ${profit} | Saldo atualizado.`);
+            }
         }
 
         if (data.msg_type === 'buy' && !data.error) {
             this.activeContracts[data.buy.contract_id] = this._pendingPrefix;
+            this.log(`Ordem ID ${data.buy.contract_id} enviada. Aguardando...`);
+            
+            // Assina atualizações específicas para este contrato (Garante velocidade máxima)
+            this.socket.send(JSON.stringify({
+                proposal_open_contract: 1,
+                contract_id: data.buy.contract_id,
+                subscribe: 1
+            }));
         }
         
         if (data.msg_type === 'buy' && data.error) {
