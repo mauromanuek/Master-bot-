@@ -94,6 +94,7 @@ const ManualModule = {
             indicator.classList.replace('bg-green-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
             this.log("SISTEMA STANDBY", "text-yellow-600");
+            app.isTrading = false;
         }
     },
 
@@ -101,6 +102,7 @@ const ManualModule = {
         if (this._handler) document.removeEventListener('contract_finished', this._handler);
         this._handler = (e) => {
             if (e.detail && e.detail.prefix === 'm') {
+                // Sincronia instantânea com DerivAPI
                 this.handleContractResult(e.detail.profit);
             }
         };
@@ -109,35 +111,34 @@ const ManualModule = {
 
     async runCycle() {
         if (!this.isActive || app.isTrading) {
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 1000);
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 600);
             return;
         }
         if (this.checkLimits()) return;
 
         try {
-            // Requisição ao cérebro (Analista/Python)
             const veredito = await app.analista.obterVereditoCompleto();
             
             if (!this.isActive || app.isTrading) return;
 
-            // No manual, 60% já ativa os botões para você ter tempo de reação
+            // Ativa os botões com 60% de confiança para dar tempo de reação ao humano
             if (veredito && veredito.confianca >= 60) {
                 this.activateButtons(veredito.direcao.toLowerCase(), veredito.confianca);
                 
-                // Reduzi o tempo de expiração do sinal para 5s (Evita entradas atrasadas)
+                // O sinal manual dura 4 segundos ou até mudar a análise
                 if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
                 this._analysisTimeout = setTimeout(() => {
                     if(!app.isTrading) {
                         this.resetButtons();
                         this.runCycle();
                     }
-                }, 5000);
+                }, 4000);
             } else {
                 this.resetButtons();
-                this._analysisTimeout = setTimeout(() => this.runCycle(), 800); 
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 600); 
             }
         } catch (e) {
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 1500);
         }
     },
 
@@ -147,13 +148,15 @@ const ManualModule = {
         
         app.isTrading = true;
         this.resetButtons();
-        this.log(`ORDEM ENVIADA: ${side}`, "text-white font-bold");
+        this.log(`TIRO MANUAL: ${side}`, "text-white font-bold bg-blue-900 px-1");
 
         DerivAPI.buy(side, stake, 'm', (res) => {
             if (res.error) {
-                this.log(`FALHA: ${res.error.message}`, "text-red-500");
+                this.log(`REJEITADO: ${res.error.message}`, "text-red-500");
                 app.isTrading = false;
                 this.runCycle();
+            } else {
+                this.log("ORDEM EM CURSO. Acompanhando...", "text-blue-300 animate-pulse");
             }
         });
     },
@@ -166,7 +169,7 @@ const ManualModule = {
         if (btn && !app.isTrading) {
             btn.disabled = false;
             btn.style.opacity = "1";
-            btn.classList.add('animate-bounce-subtle', 'ring-4', 'ring-white/20');
+            btn.classList.add('animate-pulse', 'border-white');
             if(confText) confText.innerText = confidence + "%";
         }
     },
@@ -180,7 +183,7 @@ const ManualModule = {
             if(b) {
                 b.disabled = true;
                 b.style.opacity = "0.2";
-                b.classList.remove('animate-bounce-subtle', 'ring-4', 'ring-white/20');
+                b.classList.remove('animate-pulse', 'border-white');
                 if(confText) confText.innerText = "--%";
             }
         });
@@ -190,12 +193,14 @@ const ManualModule = {
         this.currentProfit += profit;
         if (profit > 0) this.stats.wins++;
         else this.stats.losses++;
+        this.stats.total++;
         
         this.updateUI(profit);
         
-        // Pausa curta de 1.5s após trade para respirar
+        // Libera o estado de trading e volta a monitorar
+        app.isTrading = false;
         if (this.isActive) {
-            setTimeout(() => this.runCycle(), 1500);
+            setTimeout(() => this.runCycle(), 1000);
         }
     },
 
@@ -203,11 +208,11 @@ const ManualModule = {
         const tp = parseFloat(document.getElementById('m-tp')?.value || 0);
         const sl = parseFloat(document.getElementById('m-sl')?.value || 0);
         if (tp > 0 && this.currentProfit >= tp) {
-            this.log("META ATINGIDA!", "text-green-500 font-black");
+            this.log("ALVO ATINGIDO: SESSÃO ENCERRADA", "text-green-500 font-black");
             this.toggle(); return true;
         }
         if (sl > 0 && this.currentProfit <= (sl * -1)) {
-            this.log("STOP ATINGIDO!", "text-red-500 font-black");
+            this.log("STOP ATINGIDO: PROTEÇÃO ATIVA", "text-red-500 font-black");
             this.toggle(); return true;
         }
         return false;
@@ -221,6 +226,11 @@ const ManualModule = {
         }
         document.getElementById('m-stat-w').innerText = this.stats.wins;
         document.getElementById('m-stat-l').innerText = this.stats.losses;
-        this.log(`LUCRO: $${lastProfit.toFixed(2)}`, lastProfit > 0 ? "text-green-400" : "text-red-400");
+        
+        const cor = lastProfit > 0 ? "text-green-400" : "text-red-400";
+        this.log(`${lastProfit > 0 ? '✅ WIN' : '❌ LOSS'}: $${lastProfit.toFixed(2)}`, `${cor} font-bold`);
+        
+        // Atualiza saldo global no objeto principal
+        if (window.app) app.updateModuleProfit(lastProfit, 'm');
     }
 };
