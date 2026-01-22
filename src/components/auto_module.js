@@ -73,7 +73,7 @@ const AutoModule = {
             this.currentProfit = 0;
             this.stats = { wins: 0, losses: 0, total: 0 };
             
-            this.log(`MODO SCALPER ATIVADO EM ${app.currentAsset}`, "text-purple-400 font-bold");
+            this.log(`MODO SNIPER ATIVADO EM ${app.currentAsset}`, "text-purple-400 font-bold underline");
             this.setupListener(); 
             this.runCycle();
         } else {
@@ -82,15 +82,18 @@ const AutoModule = {
             btn.classList.replace('bg-red-600', 'bg-purple-600');
             indicator.classList.replace('bg-purple-500', 'bg-gray-600');
             indicator.classList.remove('animate-pulse');
-            this.log("SISTEMA DESLIGADO", "text-yellow-600");
+            this.log("SISTEMA DESLIGADO PELO USUÁRIO", "text-yellow-600 font-bold");
             app.isTrading = false;
         }
     },
 
     setupListener() {
+        // Remove ouvintes antigos para evitar duplicação de logs e processamento
         if (this._handler) document.removeEventListener('contract_finished', this._handler);
+        
         this._handler = (e) => {
             if (e.detail && e.detail.prefix === 'a') {
+                // O evento 'contract_finished' disparado pela DerivAPI garante o fim do lag
                 this.handleContractResult(e.detail.profit);
             }
         };
@@ -102,31 +105,36 @@ const AutoModule = {
         if (this.checkLimits()) return;
 
         try {
-            // MODO AGRESSIVO: Reduzi o delay visual para não perder o tick
+            // Analista processa as últimas 8-10 velas enviadas pela DerivAPI
             const veredito = await app.analista.obterVereditoCompleto();
             
             if (!this.isRunning || app.isTrading) return;
 
-            // Filtro de confiança reduzido para 70% no modo Scalper para aumentar frequência
+            // Filtro Sniper: 70% de confiança para sinais de alta frequência
             if (veredito && veredito.confianca >= 70 && (veredito.direcao === "CALL" || veredito.direcao === "PUT")) {
                 const stake = document.getElementById('a-stake')?.value || 1;
                 
-                this.log(`GATILHO: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
+                this.log(`ALVO DETECTADO: ${veredito.direcao} (${veredito.confianca}%)`, "text-green-500 font-bold");
+                this.log(`> Motivo: ${veredito.motivo}`, "text-gray-500 text-[8px]");
+                
                 app.isTrading = true; 
                 
                 DerivAPI.buy(veredito.direcao, stake, 'a', (res) => {
                     if (res.error) {
-                        this.log(`API BUSY: ${res.error.message}`, "text-red-500");
+                        this.log(`ERRO DE EXECUÇÃO: ${res.error.message}`, "text-red-500");
                         app.isTrading = false;
-                        this.scheduleNext(2000); // Tenta novamente rápido
+                        this.scheduleNext(1500); 
+                    } else {
+                        this.log("ORDEM EM MERCADO. Monitorando ticks...", "text-blue-400 animate-pulse");
                     }
                 });
             } else {
-                // Re-analisa quase instantaneamente (800ms) para pegar o próximo movimento do candle
-                this.scheduleNext(800); 
+                // Varredura ultra-rápida (500ms) para não perder a janela do candle de 1min
+                this.scheduleNext(500); 
             }
 
         } catch (e) {
+            console.error("Erro no Ciclo Auto:", e);
             this.scheduleNext(2000);
         }
     },
@@ -148,8 +156,8 @@ const AutoModule = {
         this.updateUI(profit);
         
         if (this.isRunning) {
-            // Reduzido de 5s para 2s. Tempo suficiente para o gráfico atualizar
-            this.scheduleNext(2000);
+            // Pausa curta de 1.5s após fechar para o saldo atualizar e o mercado respirar
+            this.scheduleNext(1500);
         }
     },
 
@@ -158,12 +166,12 @@ const AutoModule = {
         const sl = parseFloat(document.getElementById('a-sl')?.value || 0);
 
         if (tp > 0 && this.currentProfit >= tp) {
-            this.log(`TAKE PROFIT: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
+            this.log(`META ATINGIDA: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black text-xs");
             this.toggle();
             return true;
         }
         if (sl > 0 && this.currentProfit <= (sl * -1)) {
-            this.log(`STOP LOSS: -$${Math.abs(this.currentProfit).toFixed(2)}`, "text-red-500 font-black");
+            this.log(`STOP LOSS ATINGIDO: -$${Math.abs(this.currentProfit).toFixed(2)}`, "text-red-500 font-black text-xs");
             this.toggle();
             return true;
         }
@@ -181,6 +189,11 @@ const AutoModule = {
         document.getElementById('a-stat-l').innerText = this.stats.losses;
 
         const color = lastProfit > 0 ? "text-green-400" : "text-red-400";
-        this.log(`RES: ${lastProfit > 0 ? 'WIN' : 'LOSS'} (+$${lastProfit.toFixed(2)})`, color);
+        const icon = lastProfit > 0 ? "✅" : "❌";
+        this.log(`${icon} RESULTADO: ${lastProfit > 0 ? 'VITÓRIA' : 'DERROTA'} ($${lastProfit.toFixed(2)})`, `${color} font-bold`);
+        
+        // Sincroniza o status global no rodapé imediatamente
+        const footerStatus = document.getElementById('status-text');
+        if (footerStatus) footerStatus.innerText = `Sniper: ${lastProfit > 0 ? 'WIN' : 'LOSS'} ($${lastProfit.toFixed(2)})`;
     }
 };
