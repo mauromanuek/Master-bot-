@@ -30,13 +30,14 @@ const DerivAPI = {
         this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
 
         this.socket.onopen = () => {
-            this.log("Conectado. Autorizando...");
+            this.log("Conectado ao Cluster. Autorizando...");
             this.socket.send(JSON.stringify({ authorize: token }));
         };
 
         this.socket.onmessage = (msg) => {
             const data = JSON.parse(msg.data);
             if (data.error) {
+                // Silencia erro de inscrição duplicada para evitar logs desnecessários
                 if (data.error.code === 'AlreadySubscribed') return; 
                 this.log(`Erro API: ${data.error.message}`, "error");
                 if (callback) callback(data);
@@ -45,11 +46,11 @@ const DerivAPI = {
 
             if (data.msg_type === 'authorize') {
                 this.isAuthorized = true;
-                this.log("Autorizado.");
+                this.log("Autorização de conta confirmada.");
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 this.socket.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
                 
-                // CORREÇÃO: Garante que ao autorizar, o bot já busque o histórico inicial imediatamente
+                // Força a primeira busca de velas logo após autorizar
                 this.subscribeCandles(this.callbacks['candles']);
             }
 
@@ -62,31 +63,35 @@ const DerivAPI = {
         if (!newSymbol) return;
         const symbolFormatado = this.mapaSimbolos[newSymbol.toUpperCase()] || newSymbol;
         
+        // Evita re-inscrição se já estiver no ativo certo
         if (this.currentSymbol === symbolFormatado && this.candleSubscriptionId) return;
         
-        this.log(`Ativo: ${symbolFormatado}`);
+        this.log(`Trocando fluxo para: ${symbolFormatado}`);
         
+        // BLOQUEIO QUANT: Limpa todos os fluxos anteriores para evitar "dados fantasmas"
         this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
         this.currentSymbol = symbolFormatado;
         
         if (window.app) {
             app.currentAsset = symbolFormatado; 
+            // Limpa o buffer do analista imediatamente para o estado "Aquecendo" disparar no HTML
             if (app.analista) app.analista.limparHistorico();
         }
 
-        // CORREÇÃO: Reduzido de 300ms para 50ms para minimizar o tempo de "NEUTRO" durante a troca
+        // Pequeno delay atômico para garantir que o 'forget_all' foi processado pelo servidor
         setTimeout(() => {
             this.subscribeCandles(this.callbacks['candles']);
             this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
             document.dispatchEvent(new CustomEvent('symbol_changed', { detail: symbolFormatado }));
-        }, 50);
+        }, 100);
     },
 
     subscribeCandles(callback) {
         if (!this.isAuthorized || !this.currentSymbol) return;
         if (callback) this.callbacks['candles'] = callback;
         
+        // CORREÇÃO: Pede 100 velas para garantir que o Backend tenha massa de dados para Médias de 50
         this.socket.send(JSON.stringify({
             ticks_history: this.currentSymbol,
             adjust_start_time: 1,
@@ -101,11 +106,13 @@ const DerivAPI = {
     buy(type, stake, prefix, callback, extraParams = {}) {
         if (!this.isAuthorized) return;
 
+        // Ativa a trava de trading global para impedir troca de ativo durante a operação
         if (window.app) app.isTrading = true;
 
         this.callbacks['buy'] = callback;
         this._pendingPrefix = prefix || 'm';
 
+        // Lógica de tempo dinâmica: Índices (1s) usam ticks, Índices normais usam minutos
         const isFastAsset = this.currentSymbol.includes('1Z') || this.currentSymbol.includes('1HZ');
         
         const request = {
@@ -124,18 +131,20 @@ const DerivAPI = {
         };
 
         this.socket.send(JSON.stringify(request));
-        if (callback) this.callbacks['last_buy_action'] = callback;
     },
 
     handleResponses(data) {
+        // Armazena ID da inscrição para cancelamentos futuros
         if (data.msg_type === 'candles' && data.subscription) {
             this.candleSubscriptionId = data.subscription.id;
         }
 
+        // Processa Histórico (100 velas)
         if (data.msg_type === 'candles' && data.candles) {
             if (window.app && app.analista) app.analista.adicionarDados(data.candles);
             if (this.callbacks['candles']) this.callbacks['candles'](data.candles);
         } 
+        // Processa Atualização em tempo real (OHLC)
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol) {
                 const normalized = {
@@ -149,6 +158,7 @@ const DerivAPI = {
                 if (this.callbacks['candles']) this.callbacks['candles'](normalized);
             }
         }
+        // Processa Ticks (para o Digit Sniper e análise de momentum)
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
                 if (window.app && app.analista) app.analista.adicionarDados(null, data.tick.quote);
@@ -165,6 +175,7 @@ const DerivAPI = {
             if (window.app) app.balance = val;
         }
 
+        // GESTÃO DE CONTRATO (Win/Loss)
         if (data.msg_type === 'proposal_open_contract') {
             const c = data.proposal_open_contract;
             if (!c || !c.is_sold) return;
@@ -175,7 +186,7 @@ const DerivAPI = {
             delete this.activeContracts[c.contract_id];
             
             if (window.app) {
-                app.isTrading = false;
+                app.isTrading = false; // Libera o bot para novas operações ou trocas
                 app.updateModuleProfit(profit, prefix);
             }
             
@@ -183,15 +194,18 @@ const DerivAPI = {
                 detail: { prefix, profit, contract: c } 
             }));
             
+            // Atualiza o saldo após cada fechamento
             this.socket.send(JSON.stringify({ balance: 1 }));
-            this.log(`Contrato Finalizado. Lucro: ${profit}`);
+            this.log(`Operação Finalizada [${prefix}]. Payout: ${profit}`);
         }
 
         if (data.msg_type === 'buy' && !data.error) {
             this.activeContracts[data.buy.contract_id] = this._pendingPrefix;
+            this.log(`Ordem enviada com sucesso: ID ${data.buy.contract_id}`);
         }
         
         if (data.msg_type === 'buy' && data.error) {
+            this.log(`Falha na compra: ${data.error.message}`, "error");
             if (window.app) app.isTrading = false;
         }
     },
@@ -209,7 +223,7 @@ const DerivAPI = {
     },
 
     log(msg, type = "info") {
-        const color = type === "error" ? "color: #ff4444" : "color: #00ff88";
+        const color = type === "error" ? "color: #ff4444; font-weight: bold;" : "color: #00ff88;";
         console.log(`%c[DerivAPI] ${msg}`, color);
     }
 };
