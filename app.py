@@ -18,14 +18,19 @@ def motor_sniper_core(asset, velas, agressividade="low"):
         return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Aguardando volume de dados"}
 
     try:
-        fechamentos = [float(v.get('c', 0)) for v in velas]
-        maximas = [float(v.get('h', 0)) for v in velas]
-        minimas = [float(v.get('l', 0)) for v in velas]
+        # CORREÇÃO PONTUAL: Mapeamento duplo (chaves curtas 'c'/'h'/'l' e chaves longas 'close'/'high'/'low')
+        # Isso evita que o histórico inicial da Deriv seja lido como zeros, gerando NEUTRO.
+        fechamentos = [float(v.get('c') if v.get('c') is not None else v.get('close', 0)) for v in velas]
+        maximas = [float(v.get('h') if v.get('h') is not None else v.get('high', 0)) for v in velas]
+        minimas = [float(v.get('l') if v.get('l') is not None else v.get('low', 0)) for v in velas]
         
+        # Validação de integridade dos dados extraídos
+        if not fechamentos or fechamentos[-1] == 0:
+            return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Dados de preço insuficientes ou zerados"}
+
         atual = fechamentos[-1]
         
         # MÉDIAS ULTRA-RÁPIDAS (Exponenciais para dar peso ao AGORA)
-        # Em vez de SMA 20, usamos EMA 3 e EMA 9
         def calcular_ema(dados, periodo):
             k = 2 / (periodo + 1)
             ema = dados[0]
@@ -41,7 +46,9 @@ def motor_sniper_core(asset, velas, agressividade="low"):
         suporte_curto = min(minimas[-6:-1])
         
         # VOLATILIDADE REAL (Diferença entre a máxima e mínima recente)
-        atp = sum([maximas[i] - minimas[i] for i in range(-5, 0)]) / 5
+        # CORREÇÃO PONTUAL: Proteção contra divisão por zero ou volatilidade nula (atp mínimo)
+        atp_calc = sum([maximas[i] - minimas[i] for i in range(-5, 0)]) / 5
+        atp = max(atp_calc, 0.000001)
 
         direcao = "NEUTRO"
         confianca = 0
@@ -51,7 +58,8 @@ def motor_sniper_core(asset, velas, agressividade="low"):
         momentum = atual - fechamentos[-2]
 
         # --- ESTRATÉGIA AGRESSIVA: ROMPIMENTO DE MOMENTUM ---
-        if ema_super_fast > ema_fast:
+        # Adicionado pequeno threshold de 0.000001 para evitar ruído de micro-ticks
+        if ema_super_fast > (ema_fast + 0.000001):
             # Se rompeu a resistência curta com força
             if atual > resistencia_curta and momentum > (atp * 0.2):
                 direcao = "CALL"
@@ -63,7 +71,7 @@ def motor_sniper_core(asset, velas, agressividade="low"):
                 confianca = 82
                 motivo = "PULLBACK CURTO: Suporte de micro-tendência"
 
-        elif ema_super_fast < ema_fast:
+        elif ema_super_fast < (ema_fast - 0.000001):
             # Se rompeu o suporte curto com força
             if atual < suporte_curto and momentum < -(atp * 0.2):
                 direcao = "PUT"
@@ -83,7 +91,7 @@ def motor_sniper_core(asset, velas, agressividade="low"):
             "asset": asset
         }
     except Exception as e:
-        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro: {str(e)}"}
+        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro interno: {str(e)}"}
 
 @app.route('/')
 def index():
@@ -94,7 +102,6 @@ def analisar():
     dados = request.get_json(force=True, silent=True)
     if not dados: return jsonify({"error": "No data"}), 400
     
-    # Captura a flag de agressividade enviada pelo frontend
     config = dados.get('config', {})
     agressividade = config.get('agressividade', 'low')
     
@@ -116,7 +123,6 @@ def radar():
     
     resultados = []
     for item in dados['pacote_ativos']:
-        # Radar sempre usa agressividade alta para filtrar sinais rápidos
         analise = motor_sniper_core(item['asset'], item['velas'], agressividade="high")
         if analise['direcao'] != "NEUTRO":
             resultados.append(analise)
