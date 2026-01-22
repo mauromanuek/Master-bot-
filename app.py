@@ -4,84 +4,104 @@ from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
 
 app = Flask(__name__)
+# Configuração de CORS robusta para aceitar requisições do GitHub Pages
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 LINK_DO_BOT = "https://mauromanuek.github.io/Master-bot-/"
 
 def motor_sniper_core(asset, velas, agressividade="low"):
     """
-    Core Engine: Scalping Agressivo baseado em Momentum de Ticks e Reversão de Micro-Tendência
+    Core Engine: Scalping Agressivo baseado em Momentum de Ticks e Reversão de Micro-Tendência.
+    Revisado para garantir estabilidade na troca de ativos.
     """
-    # BUFFER REDUZIDO: Para Scalping, 10 velas já são suficientes para decidir
+    # BUFFER QUANT: 10 velas é o mínimo para o Scalper, mas 30 é o ideal para Médias Móveis.
     min_velas = 10 if agressividade == "high" else 15
     if not velas or len(velas) < min_velas:
-        return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Aguardando volume de dados"}
+        return {
+            "direcao": "NEUTRO", 
+            "confianca": 0, 
+            "motivo": f"Sincronizando: {len(velas) if velas else 0}/{min_velas} velas recebidas"
+        }
 
     try:
-        # CORREÇÃO PONTUAL: Mapeamento duplo (chaves curtas 'c'/'h'/'l' e chaves longas 'close'/'high'/'low')
-        # Isso evita que o histórico inicial da Deriv seja lido como zeros, gerando NEUTRO.
-        fechamentos = [float(v.get('c') if v.get('c') is not None else v.get('close', 0)) for v in velas]
-        maximas = [float(v.get('h') if v.get('h') is not None else v.get('high', 0)) for v in velas]
-        minimas = [float(v.get('l') if v.get('l') is not None else v.get('low', 0)) for v in velas]
-        
-        # Validação de integridade dos dados extraídos
-        if not fechamentos or fechamentos[-1] == 0:
-            return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Dados de preço insuficientes ou zerados"}
+        # NORMALIZAÇÃO DE DADOS (Dicionário Flexível):
+        # A Deriv envia 'c' no stream OHLC e 'close' no histórico inicial. 
+        # Aqui garantimos que o motor enxergue o preço independente da chave.
+        fechamentos = []
+        maximas = []
+        minimas = []
+
+        for v in velas:
+            c = float(v.get('c') if v.get('c') is not None else v.get('close', 0))
+            h = float(v.get('h') if v.get('h') is not None else v.get('high', 0))
+            l = float(v.get('l') if v.get('l') is not None else v.get('low', 0))
+            
+            # Filtro de sanidade: ignora velas "vazias" que a API manda no momento do reset
+            if c > 0:
+                fechamentos.append(c)
+                maximas.append(h)
+                minimas.append(l)
+
+        if len(fechamentos) < min_velas:
+            return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Aguardando preenchimento do buffer"}
 
         atual = fechamentos[-1]
         
-        # MÉDIAS ULTRA-RÁPIDAS (Exponenciais para dar peso ao AGORA)
+        # CÁLCULO DE EMA (Exponential Moving Average) - Peso maior para o preço atual
         def calcular_ema(dados, periodo):
+            if not dados: return 0
             k = 2 / (periodo + 1)
             ema = dados[0]
             for preco in dados[1:]:
                 ema = (preco * k) + (ema * (1 - k))
             return ema
 
-        ema_super_fast = calcular_ema(fechamentos, 3) 
-        ema_fast = calcular_ema(fechamentos, 7)
+        ema_super_fast = calcular_ema(fechamentos, 3)  # Reação imediata
+        ema_fast = calcular_ema(fechamentos, 7)       # Tendência de curto prazo
         
-        # ZONAS DE SCALPING (Curto Prazo - últimas 6 velas)
-        resistencia_curta = max(maximas[-6:-1])
-        suporte_curto = min(minimas[-6:-1])
+        # ZONAS DE SUPORTE E RESISTÊNCIA DE MICRO-FRAME (Últimas 6 velas)
+        resistencia_curta = max(maximas[-6:])
+        suporte_curto = min(minimas[-6:])
         
-        # VOLATILIDADE REAL (Diferença entre a máxima e mínima recente)
-        # CORREÇÃO PONTUAL: Proteção contra divisão por zero ou volatilidade nula (atp mínimo)
+        # VOLATILIDADE (ATP - Average True Price Range)
+        # Proteção contra divisão por zero e volatilidade nula
         atp_calc = sum([maximas[i] - minimas[i] for i in range(-5, 0)]) / 5
-        atp = max(atp_calc, 0.000001)
+        atp = max(atp_calc, 0.00000001)
 
         direcao = "NEUTRO"
         confianca = 0
-        motivo = "Monitorando exaustão"
+        motivo = "Aguardando Gatilho"
 
-        # CÁLCULO DE VELOCIDADE (Momentum Imediato)
+        # MOMENTUM (Velocidade do candle atual em relação ao anterior)
         momentum = atual - fechamentos[-2]
 
-        # --- ESTRATÉGIA AGRESSIVA: ROMPIMENTO DE MOMENTUM ---
-        # Adicionado pequeno threshold de 0.000001 para evitar ruído de micro-ticks
-        if ema_super_fast > (ema_fast + 0.000001):
-            # Se rompeu a resistência curta com força
-            if atual > resistencia_curta and momentum > (atp * 0.2):
+        # --- LÓGICA DE DECISÃO AGRESSIVA ---
+        
+        # 1. GATILHO DE ALTA (BULLISH)
+        if ema_super_fast > (ema_fast + (atp * 0.05)):
+            # Rompimento de máxima com momentum positivo
+            if atual >= resistencia_curta and momentum > (atp * 0.1):
                 direcao = "CALL"
                 confianca = 88 if agressividade == "high" else 75
-                motivo = "EXPLOSÃO DE ALTA: Scalping momentum ativo"
-            # Rejeição em suporte curto
+                motivo = "ROMPIMENTO DE ALTA: Momentum e volume confirmados"
+            # Pullback no suporte
             elif atual <= (suporte_curto + (atp * 0.1)):
                 direcao = "CALL"
                 confianca = 82
-                motivo = "PULLBACK CURTO: Suporte de micro-tendência"
+                motivo = "REJEIÇÃO DE BAIXA: Suporte de micro-tendência identificado"
 
-        elif ema_super_fast < (ema_fast - 0.000001):
-            # Se rompeu o suporte curto com força
-            if atual < suporte_curto and momentum < -(atp * 0.2):
+        # 2. GATILHO DE BAIXA (BEARISH)
+        elif ema_super_fast < (ema_fast - (atp * 0.05)):
+            # Rompimento de mínima com momentum negativo
+            if atual <= suporte_curto and momentum < -(atp * 0.1):
                 direcao = "PUT"
                 confianca = 88 if agressividade == "high" else 75
-                motivo = "EXPLOSÃO DE BAIXA: Scalping momentum ativo"
-            # Rejeição em resistência curta
+                motivo = "ROMPIMENTO DE BAIXA: Momentum e volume confirmados"
+            # Pullback na resistência
             elif atual >= (resistencia_curta - (atp * 0.1)):
                 direcao = "PUT"
                 confianca = 82
-                motivo = "PULLBACK CURTO: Resistência de micro-tendência"
+                motivo = "REJEIÇÃO DE ALTA: Resistência de micro-tendência identificada"
 
         return {
             "direcao": direcao,
@@ -91,7 +111,9 @@ def motor_sniper_core(asset, velas, agressividade="low"):
             "asset": asset
         }
     except Exception as e:
-        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro interno: {str(e)}"}
+        return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro na Engine: {str(e)}"}
+
+# --- ROTAS DA API ---
 
 @app.route('/')
 def index():
@@ -99,37 +121,47 @@ def index():
 
 @app.route('/analisar', methods=['POST'])
 def analisar():
-    dados = request.get_json(force=True, silent=True)
-    if not dados: return jsonify({"error": "No data"}), 400
-    
-    config = dados.get('config', {})
-    agressividade = config.get('agressividade', 'low')
-    
-    resultado = motor_sniper_core(
-        dados.get('asset'), 
-        dados.get('contexto_velas', []),
-        agressividade=agressividade
-    )
-    
-    return jsonify({
-        "choices": [{"message": {"content": json.dumps(resultado)}}]
-    })
+    try:
+        dados = request.get_json(force=True, silent=True)
+        if not dados: 
+            return jsonify({"error": "Dados inválidos"}), 400
+        
+        config = dados.get('config', {})
+        agressividade = config.get('agressividade', 'low')
+        
+        resultado = motor_sniper_core(
+            dados.get('asset'), 
+            dados.get('contexto_velas', []),
+            agressividade=agressividade
+        )
+        
+        # Mantém o formato esperado pelo frontend (padrão JSON aninhado)
+        return jsonify({
+            "choices": [{"message": {"content": json.dumps(resultado)}}]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/radar', methods=['POST'])
 def radar():
-    dados = request.get_json(force=True, silent=True)
-    if not dados or 'pacote_ativos' not in dados:
-        return jsonify({"error": "Radar Fail"}), 400
-    
-    resultados = []
-    for item in dados['pacote_ativos']:
-        analise = motor_sniper_core(item['asset'], item['velas'], agressividade="high")
-        if analise['direcao'] != "NEUTRO":
-            resultados.append(analise)
-    
-    top3 = sorted(resultados, key=lambda x: x['confianca'], reverse=True)[:3]
-    return jsonify({"top3": top3})
+    try:
+        dados = request.get_json(force=True, silent=True)
+        if not dados or 'pacote_ativos' not in dados:
+            return jsonify({"error": "Pacote de ativos não encontrado"}), 400
+        
+        resultados = []
+        for item in dados['pacote_ativos']:
+            analise = motor_sniper_core(item['asset'], item['velas'], agressividade="high")
+            if analise['direcao'] != "NEUTRO":
+                resultados.append(analise)
+        
+        # Retorna apenas as 3 melhores oportunidades para o radar do frontend
+        top3 = sorted(resultados, key=lambda x: x['confianca'], reverse=True)[:3]
+        return jsonify({"top3": top3})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # Configuração para deploy (Render/Heroku/Railway)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
