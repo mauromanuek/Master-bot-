@@ -27,6 +27,7 @@ const DerivAPI = {
     connect(token, callback) {
         if (this.socket) { try { this.socket.close(); } catch(e) {} }
         
+        // Conexão oficial via WebSocket da Deriv
         this.socket = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
 
         this.socket.onopen = () => {
@@ -37,8 +38,7 @@ const DerivAPI = {
         this.socket.onmessage = (msg) => {
             const data = JSON.parse(msg.data);
             
-            // FILTRO DE ISOLAMENTO: Se a mensagem tiver req_id, ela pertence a uma consulta isolada (Radar)
-            // e não deve ser processada pelo fluxo principal de trading.
+            // FILTRO DE ISOLAMENTO: O req_id separa as consultas do RADAR do fluxo principal.
             if (data.req_id) return; 
 
             if (data.error) {
@@ -51,8 +51,11 @@ const DerivAPI = {
             if (data.msg_type === 'authorize') {
                 this.isAuthorized = true;
                 this.log("Autorização de conta confirmada.");
+                // Assina atualizações de saldo e contratos abertos
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 this.socket.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
+                
+                // SNIPER: Inicia a assinatura do gráfico com o buffer otimizado
                 this.subscribeCandles(this.callbacks['candles']);
             }
 
@@ -61,8 +64,11 @@ const DerivAPI = {
         };
     },
 
-    // NOVO MÉTODO: Busca histórico sem assinar stream e sem interferir no ativo atual
-    async getHistoryIsolated(symbol, count = 30) {
+    /**
+     * SNIPER RADAR: Busca histórico de forma isolada e ultra-leve.
+     * Reduzido de 30 para 10 candles para evitar erro 100/10.
+     */
+    async getHistoryIsolated(symbol, count = 10) {
         return new Promise((resolve) => {
             if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return resolve(null);
 
@@ -85,14 +91,14 @@ const DerivAPI = {
             this.socket.send(JSON.stringify({
                 ticks_history: symbol,
                 adjust_start_time: 1,
-                count: count,
+                count: count, // Apenas 10 velas para o radar sniper
                 end: "latest",
                 granularity: 60,
                 style: "candles",
-                req_id: reqId // O segredo do isolamento está aqui
+                req_id: reqId 
             }));
 
-            // Timeout para evitar travamento da Promise
+            // Timeout de segurança
             setTimeout(() => {
                 this.socket.removeEventListener('message', tempHandler);
                 resolve(null);
@@ -107,6 +113,8 @@ const DerivAPI = {
         if (this.currentSymbol === symbolFormatado && this.candleSubscriptionId) return;
         
         this.log(`Trocando fluxo para: ${symbolFormatado}`);
+        
+        // Limpa todas as assinaturas anteriores para economizar banda e evitar conflito
         this.socket.send(JSON.stringify({ forget_all: ["candles", "ohlc", "ticks"] }));
         this.candleSubscriptionId = null;
         this.currentSymbol = symbolFormatado;
@@ -116,13 +124,18 @@ const DerivAPI = {
             if (app.analista) app.analista.limparHistorico();
         }
 
+        // Delay para garantir que o 'forget_all' foi processado pela Deriv
         setTimeout(() => {
             this.subscribeCandles(this.callbacks['candles']);
             this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
             document.dispatchEvent(new CustomEvent('symbol_changed', { detail: symbolFormatado }));
-        }, 100);
+        }, 300);
     },
 
+    /**
+     * SNIPER: Assina o fluxo de candles.
+     * Modificado para pedir apenas 10 velas iniciais em vez de 100.
+     */
     subscribeCandles(callback) {
         if (!this.isAuthorized || !this.currentSymbol) return;
         if (callback) this.callbacks['candles'] = callback;
@@ -130,7 +143,7 @@ const DerivAPI = {
         this.socket.send(JSON.stringify({
             ticks_history: this.currentSymbol,
             adjust_start_time: 1,
-            count: 100, 
+            count: 10, // REDUZIDO: Pede apenas 10 candles para disparo imediato do sniper
             end: "latest",
             granularity: 60,
             style: "candles",
@@ -170,10 +183,12 @@ const DerivAPI = {
             this.candleSubscriptionId = data.subscription.id;
         }
 
+        // Tratamento de Candles Históricos e do Primeiro Stream
         if (data.msg_type === 'candles' && data.candles) {
             if (window.app && app.analista) app.analista.adicionarDados(data.candles);
             if (this.callbacks['candles']) this.callbacks['candles'](data.candles);
         } 
+        // Tratamento de Candles em tempo real (OHLC)
         else if (data.msg_type === 'ohlc') {
             if (data.ohlc.symbol === this.currentSymbol) {
                 const normalized = {
@@ -187,6 +202,7 @@ const DerivAPI = {
                 if (this.callbacks['candles']) this.callbacks['candles'](normalized);
             }
         }
+        // Tratamento de Ticks Individuais (Análise de Micro-Momentum)
         else if (data.msg_type === 'tick') {
             if (data.tick.symbol === this.currentSymbol) {
                 if (window.app && app.analista) app.analista.adicionarDados(null, data.tick.quote);
