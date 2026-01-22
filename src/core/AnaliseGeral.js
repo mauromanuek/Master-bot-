@@ -14,7 +14,12 @@ class AnaliseGeral {
             "VOLATILITY 100 INDEX": "R_100",
             "VOLATILITY 10 (1S)": "1Z10",
             "VOLATILITY 15 (1S)": "1HZ15V",
-            "VOLATILITY 100 (1S)": "1HZ100V"
+            "VOLATILITY 100 (1S)": "1HZ100V",
+            "BOOM 300 INDEX": "B_300",
+            "CRASH 300 INDEX": "C_300",
+            "BOOM 500 INDEX": "B_500",
+            "CRASH 500 INDEX": "C_500",
+            "STEP INDEX": "STPINDEX"
         };
     }
 
@@ -22,6 +27,7 @@ class AnaliseGeral {
         this.historicoVelas = [];
         this.ultimosTicks = [];
         this._analisando = false;
+        this.ultimoVeredito = { direcao: "NEUTRO", confianca: 0 };
     }
 
     adicionarDados(velas, tickBruto = null) {
@@ -40,9 +46,9 @@ class AnaliseGeral {
         });
 
         if (Array.isArray(velas)) {
-            // CORREÇÃO: Garante que o histórico não seja limpo se recebermos pacotes menores da API
+            // CORREÇÃO QUANT: Proteção contra pacotes de histórico vazios ou menores que o buffer atual
             const novasVelas = velas.map(v => formatarVela(v));
-            if (this.historicoVelas.length === 0 || novasVelas.length > 1) {
+            if (this.historicoVelas.length === 0 || novasVelas.length >= this.historicoVelas.length) {
                 this.historicoVelas = novasVelas;
             }
         } else if (velas && typeof velas === 'object') {
@@ -50,45 +56,42 @@ class AnaliseGeral {
             
             if (this.historicoVelas.length > 0) {
                 const ultima = this.historicoVelas[this.historicoVelas.length - 1];
+                // Só adiciona se for uma vela nova (epoch maior) ou atualiza a vela atual
                 if (nova.e > ultima.e) {
                     this.historicoVelas.push(nova);
-                } else {
+                } else if (nova.e === ultima.e) {
                     this.historicoVelas[this.historicoVelas.length - 1] = nova;
                 }
             } else {
                 this.historicoVelas.push(nova);
             }
         }
-        // CORREÇÃO: Aumentado para 100 para que indicadores de período longo (como Médias de 20 ou 50 no Python)
-        // tenham dados suficientes e não retornem "NEUTRO" por erro de cálculo.
+
+        // CORREÇÃO: Limite de 100 velas para garantir dados para Médias Móveis de 20/50 no Backend
         if (this.historicoVelas.length > 100) this.historicoVelas.shift();
     }
 
     async obterVereditoCompleto() {
-        if (this._analisando) return null;
+        // Se já houver uma requisição em curso, retorna o último estado para evitar "Aquecendo 0/10" visual
+        if (this._analisando) return this.ultimoVeredito;
         
-        // AGRESSIVIDADE: Agora ele começa a operar com apenas 10 velas de histórico
-        if (this.historicoVelas.length < 10) {
-            console.log(`[Scalper] Aquecendo motor: ${this.historicoVelas.length}/10`);
-            return { direcao: "NEUTRO", confianca: 0, motivo: "Aquecimento de buffer" };
+        // AGRESSIVIDADE: O bot opera com mínimo de 10 velas, mas o ideal é o buffer de 30 enviado
+        const totalVelas = this.historicoVelas.length;
+        if (totalVelas < 10) {
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Aguardando histórico mínimo" };
         }
 
-        if (window.app && app.isTrading) return null;
+        // Bloqueio de análise se o bot já estiver em uma operação aberta
+        if (window.app && app.isTrading) return this.ultimoVeredito;
 
         this._analisando = true;
         
-        const assetBruto = app.currentAsset; 
+        const assetBruto = window.app ? app.currentAsset : "R_100"; 
         const assetTecnico = this.mapaSimbolos[assetBruto.toUpperCase()] || assetBruto;
-
-        // CÁLCULO DE MOMENTUM LOCAL (Antes de enviar ao Python)
-        const v = this.historicoVelas;
-        const ultimaVela = v[v.length - 1];
-        const penultimaVela = v[v.length - 2];
-        const direcaoImediata = ultimaVela.c > penultimaVela.c ? "ALTA" : "BAIXA";
 
         const payload = {
             asset: assetTecnico,
-            // CORREÇÃO: Enviamos 30 velas (em vez de 15) para garantir estabilidade nos indicadores do backend
+            // CORREÇÃO: Enviamos 30 velas para estabilizar indicadores técnicos (RSI/Médias) no Python
             contexto_velas: this.historicoVelas.slice(-30),
             dados_ticks: this.ultimosTicks, 
             config: { 
@@ -110,6 +113,7 @@ class AnaliseGeral {
             const data = await response.json();
             let res = data;
             
+            // Tratamento caso a resposta venha aninhada (padrão OpenAI/LLM)
             if (data.choices && data.choices[0].message.content) {
                 const content = data.choices[0].message.content;
                 res = typeof content === 'string' ? JSON.parse(content.replace(/```json|```/g, "")) : content;
@@ -118,17 +122,16 @@ class AnaliseGeral {
             this.ultimoVeredito = {
                 direcao: (res.direcao || "NEUTRO").toUpperCase(),
                 confianca: parseInt(res.confianca || 0),
-                motivo: res.motivo || "Análise rápida concluída",
-                estratégia: "Agressive Scalper V2"
+                motivo: res.motivo || "Análise concluída",
+                estratégia: "Agressive Scalper V2.5"
             };
 
             return this.ultimoVeredito;
         } catch (e) {
-            console.warn("[Scalper] Engine falhou, operando em modo offline...");
+            console.warn("[Analista] Falha na comunicação com o Backend. Mantendo estado neutro.");
             return { direcao: "NEUTRO", confianca: 0 };
         } finally {
-            // CORREÇÃO: O uso do finally garante que o bot nunca fique travado em "analisando = true"
-            // mesmo se a rede falhar, permitindo que a próxima tentativa ocorra.
+            // O finally garante que a flag seja liberada mesmo em caso de erro de rede
             this._analisando = false;
         }
     }
