@@ -48,6 +48,9 @@ const DerivAPI = {
                 this.log("Autorizado.");
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
                 this.socket.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
+                
+                // CORREÇÃO: Garante que ao autorizar, o bot já busque o histórico inicial imediatamente
+                this.subscribeCandles(this.callbacks['candles']);
             }
 
             this.handleResponses(data);
@@ -72,11 +75,12 @@ const DerivAPI = {
             if (app.analista) app.analista.limparHistorico();
         }
 
+        // CORREÇÃO: Reduzido de 300ms para 50ms para minimizar o tempo de "NEUTRO" durante a troca
         setTimeout(() => {
             this.subscribeCandles(this.callbacks['candles']);
             this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
             document.dispatchEvent(new CustomEvent('symbol_changed', { detail: symbolFormatado }));
-        }, 300);
+        }, 50);
     },
 
     subscribeCandles(callback) {
@@ -194,7 +198,7 @@ const DerivAPI = {
 
     subscribeTicks(callback) {
         if (!this.isAuthorized) return;
-        this.callbacks['tick'] = callback; // Armazena para uso no handleResponses
+        this.callbacks['tick'] = callback; 
         this.socket.send(JSON.stringify({ ticks: this.currentSymbol, subscribe: 1 }));
     },
 
