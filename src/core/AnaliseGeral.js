@@ -40,7 +40,11 @@ class AnaliseGeral {
         });
 
         if (Array.isArray(velas)) {
-            this.historicoVelas = velas.map(v => formatarVela(v));
+            // CORREÇÃO: Garante que o histórico não seja limpo se recebermos pacotes menores da API
+            const novasVelas = velas.map(v => formatarVela(v));
+            if (this.historicoVelas.length === 0 || novasVelas.length > 1) {
+                this.historicoVelas = novasVelas;
+            }
         } else if (velas && typeof velas === 'object') {
             const nova = formatarVela(velas);
             
@@ -55,8 +59,9 @@ class AnaliseGeral {
                 this.historicoVelas.push(nova);
             }
         }
-        // Reduzido para 50 para liberar memória e acelerar o processamento
-        if (this.historicoVelas.length > 50) this.historicoVelas.shift();
+        // CORREÇÃO: Aumentado para 100 para que indicadores de período longo (como Médias de 20 ou 50 no Python)
+        // tenham dados suficientes e não retornem "NEUTRO" por erro de cálculo.
+        if (this.historicoVelas.length > 100) this.historicoVelas.shift();
     }
 
     async obterVereditoCompleto() {
@@ -65,7 +70,7 @@ class AnaliseGeral {
         // AGRESSIVIDADE: Agora ele começa a operar com apenas 10 velas de histórico
         if (this.historicoVelas.length < 10) {
             console.log(`[Scalper] Aquecendo motor: ${this.historicoVelas.length}/10`);
-            return null;
+            return { direcao: "NEUTRO", confianca: 0, motivo: "Aquecimento de buffer" };
         }
 
         if (window.app && app.isTrading) return null;
@@ -83,13 +88,13 @@ class AnaliseGeral {
 
         const payload = {
             asset: assetTecnico,
-            // Enviamos apenas 15 velas para o Python focar no AGORA
-            contexto_velas: this.historicoVelas.slice(-15),
-            dados_ticks: this.ultimosTicks, // Ticks para sentir a força do "vapt-vupt"
+            // CORREÇÃO: Enviamos 30 velas (em vez de 15) para garantir estabilidade nos indicadores do backend
+            contexto_velas: this.historicoVelas.slice(-30),
+            dados_ticks: this.ultimosTicks, 
             config: { 
                 sniper_mode: true, 
-                agressividade: "high", // Flag para o Python mudar a estratégia
-                min_confidence: 65     // Reduzido para entrar em mais operações
+                agressividade: "high", 
+                min_confidence: 65     
             }
         };
 
@@ -117,12 +122,14 @@ class AnaliseGeral {
                 estratégia: "Agressive Scalper V2"
             };
 
-            this._analisando = false;
             return this.ultimoVeredito;
         } catch (e) {
-            this._analisando = false;
             console.warn("[Scalper] Engine falhou, operando em modo offline...");
             return { direcao: "NEUTRO", confianca: 0 };
+        } finally {
+            // CORREÇÃO: O uso do finally garante que o bot nunca fique travado em "analisando = true"
+            // mesmo se a rede falhar, permitindo que a próxima tentativa ocorra.
+            this._analisando = false;
         }
     }
 }
