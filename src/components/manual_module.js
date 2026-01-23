@@ -6,12 +6,13 @@ const ManualModule = {
     _analysisTimeout: null,
 
     render() {
+        const assetName = (window.app && app.currentAsset) ? app.currentAsset : "---";
         return `
             <div class="space-y-4 max-w-md mx-auto">
                 <div class="flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-bold text-blue-500 italic uppercase leading-none">Manual Sniper Pro</h2>
-                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: <span id="m-current-asset" class="text-blue-400">${app.currentAsset || '---'}</span></span>
+                        <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">Sincronizado: <span id="m-current-asset" class="text-blue-400">${assetName}</span></span>
                     </div>
                     <div id="m-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
                 </div>
@@ -78,10 +79,13 @@ const ManualModule = {
         
         if (this.isActive) {
             btn.innerText = "PARAR MONITORAMENTO";
-            btn.classList.replace('bg-blue-600', 'bg-red-600');
-            indicator.classList.replace('bg-gray-600', 'bg-green-500');
-            indicator.classList.add('animate-pulse');
-            if(assetText) assetText.innerText = app.currentAsset;
+            btn.classList.remove('bg-blue-600');
+            btn.classList.add('bg-red-600');
+            
+            indicator.classList.remove('bg-gray-600');
+            indicator.classList.add('bg-green-500', 'animate-pulse');
+            
+            if(assetText && window.app) assetText.innerText = app.currentAsset;
             
             this.log("MODO SNIPER PRO ATIVO", "text-blue-400 font-bold");
             this.setupListener(); 
@@ -90,19 +94,25 @@ const ManualModule = {
             if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
             this.resetButtons();
             btn.innerText = "INICIAR MONITORAMENTO";
-            btn.classList.replace('bg-red-600', 'bg-blue-600');
-            indicator.classList.replace('bg-green-500', 'bg-gray-600');
-            indicator.classList.remove('animate-pulse');
+            btn.classList.remove('bg-red-600');
+            btn.classList.add('bg-blue-600');
+            
+            indicator.classList.remove('bg-green-500', 'animate-pulse');
+            indicator.classList.add('bg-gray-600');
+            
             this.log("SISTEMA STANDBY", "text-yellow-600");
             app.isTrading = false;
         }
     },
 
     setupListener() {
-        if (this._handler) document.removeEventListener('contract_finished', this._handler);
+        // CORREÇÃO: Limpeza de listener anterior para evitar duplicidade no Manual
+        if (this._handler) {
+            document.removeEventListener('contract_finished', this._handler);
+        }
+        
         this._handler = (e) => {
-            if (e.detail && e.detail.prefix === 'm') {
-                // Sincronia instantânea com DerivAPI
+            if (this.isActive && e.detail && e.detail.prefix === 'm') {
                 this.handleContractResult(e.detail.profit);
             }
         };
@@ -110,10 +120,13 @@ const ManualModule = {
     },
 
     async runCycle() {
-        if (!this.isActive || app.isTrading) {
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 600);
+        if (!this.isActive || !app.analista) return;
+        
+        if (app.isTrading) {
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 1000);
             return;
         }
+
         if (this.checkLimits()) return;
 
         try {
@@ -121,11 +134,11 @@ const ManualModule = {
             
             if (!this.isActive || app.isTrading) return;
 
-            // Ativa os botões com 60% de confiança para dar tempo de reação ao humano
-            if (veredito && veredito.confianca >= 60) {
+            // Ativa botões manuais com 60% de confiança para dar tempo de reação
+            if (veredito && veredito.confianca >= 60 && (veredito.direcao === "CALL" || veredito.direcao === "PUT")) {
                 this.activateButtons(veredito.direcao.toLowerCase(), veredito.confianca);
                 
-                // O sinal manual dura 4 segundos ou até mudar a análise
+                // O sinal manual dura 4 segundos ou até a próxima análise mudar o cenário
                 if (this._analysisTimeout) clearTimeout(this._analysisTimeout);
                 this._analysisTimeout = setTimeout(() => {
                     if(!app.isTrading) {
@@ -135,36 +148,39 @@ const ManualModule = {
                 }, 4000);
             } else {
                 this.resetButtons();
-                this._analysisTimeout = setTimeout(() => this.runCycle(), 600); 
+                this._analysisTimeout = setTimeout(() => this.runCycle(), 800); 
             }
         } catch (e) {
-            this._analysisTimeout = setTimeout(() => this.runCycle(), 1500);
+            console.error("Erro Ciclo Manual:", e);
+            this._analysisTimeout = setTimeout(() => this.runCycle(), 2000);
         }
     },
 
     trade(side) {
         if (app.isTrading) return;
-        const stake = document.getElementById('m-stake')?.value || 1;
+        
+        const stakeInput = document.getElementById('m-stake');
+        const stake = stakeInput ? parseFloat(stakeInput.value) : 1.00;
         
         app.isTrading = true;
         this.resetButtons();
-        this.log(`TIRO MANUAL: ${side}`, "text-white font-bold bg-blue-900 px-1");
+        this.log(`TIRO MANUAL: ${side} ($${stake})`, "text-white font-bold bg-blue-900 px-2 rounded");
 
         DerivAPI.buy(side, stake, 'm', (res) => {
             if (res.error) {
-                this.log(`REJEITADO: ${res.error.message}`, "text-red-500");
+                this.log(`REJEITADO PELA API: ${res.error.message}`, "text-red-500");
                 app.isTrading = false;
                 this.runCycle();
             } else {
-                this.log("ORDEM EM CURSO. Acompanhando...", "text-blue-300 animate-pulse");
+                this.log("ORDEM EM CURSO. Monitorando contrato...", "text-blue-300 animate-pulse");
             }
         });
     },
 
     activateButtons(side, confidence) {
         this.resetButtons();
-        const btn = document.getElementById('btn-' + side);
-        const confText = document.getElementById(side + '-conf');
+        const btn = document.getElementById('btn-' + side.toLowerCase());
+        const confText = document.getElementById(side.toLowerCase() + '-conf');
         
         if (btn && !app.isTrading) {
             btn.disabled = false;
@@ -192,45 +208,52 @@ const ManualModule = {
     handleContractResult(profit) {
         this.currentProfit += profit;
         if (profit > 0) this.stats.wins++;
-        else this.stats.losses++;
+        else if (profit < 0) this.stats.losses++;
         this.stats.total++;
         
         this.updateUI(profit);
         
-        // Libera o estado de trading e volta a monitorar
-        app.isTrading = false;
+        // O app.updateModuleProfit já libera app.isTrading = false
+        if (window.app) app.updateModuleProfit(profit, 'm');
+
         if (this.isActive) {
             setTimeout(() => this.runCycle(), 1000);
         }
     },
 
     checkLimits() {
-        const tp = parseFloat(document.getElementById('m-tp')?.value || 0);
-        const sl = parseFloat(document.getElementById('m-sl')?.value || 0);
+        const tpEl = document.getElementById('m-tp');
+        const slEl = document.getElementById('m-sl');
+        
+        const tp = tpEl ? parseFloat(tpEl.value) : 0;
+        const sl = slEl ? parseFloat(slEl.value) : 0;
+
         if (tp > 0 && this.currentProfit >= tp) {
-            this.log("ALVO ATINGIDO: SESSÃO ENCERRADA", "text-green-500 font-black");
-            this.toggle(); return true;
+            this.log(`META ATINGIDA: +$${this.currentProfit.toFixed(2)}`, "text-green-500 font-black");
+            this.toggle(); 
+            return true;
         }
         if (sl > 0 && this.currentProfit <= (sl * -1)) {
-            this.log("STOP ATINGIDO: PROTEÇÃO ATIVA", "text-red-500 font-black");
-            this.toggle(); return true;
+            this.log(`STOP LOSS ATINGIDO: -$${Math.abs(this.currentProfit).toFixed(2)}`, "text-red-500 font-black");
+            this.toggle(); 
+            return true;
         }
         return false;
     },
 
     updateUI(lastProfit) {
         const profitEl = document.getElementById('m-val-profit');
+        const winEl = document.getElementById('m-stat-w');
+        const lossEl = document.getElementById('m-stat-l');
+
         if (profitEl) {
             profitEl.innerText = `${this.currentProfit.toFixed(2)} USD`;
             profitEl.className = `text-xl font-black ${this.currentProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
         }
-        document.getElementById('m-stat-w').innerText = this.stats.wins;
-        document.getElementById('m-stat-l').innerText = this.stats.losses;
+        if (winEl) winEl.innerText = this.stats.wins;
+        if (lossEl) lossEl.innerText = this.stats.losses;
         
         const cor = lastProfit > 0 ? "text-green-400" : "text-red-400";
-        this.log(`${lastProfit > 0 ? '✅ WIN' : '❌ LOSS'}: $${lastProfit.toFixed(2)}`, `${cor} font-bold`);
-        
-        // Atualiza saldo global no objeto principal
-        if (window.app) app.updateModuleProfit(lastProfit, 'm');
+        this.log(`RESULTADO: ${lastProfit > 0 ? 'VITÓRIA' : 'DERROTA'} ($${lastProfit.toFixed(2)})`, `${cor} font-bold`);
     }
 };
