@@ -7,6 +7,7 @@ const DerivAPI = {
     candleSubscriptionId: null,
     isSubscribing: false,
     _pendingPrefix: 'm',
+    _isProcessingBuy: false, // TRAVA DE SEGURANÇA ADICIONADA
 
     mapaSimbolos: {
         "VOLATILITY 10 INDEX": "R_10",
@@ -38,11 +39,18 @@ const DerivAPI = {
             const data = JSON.parse(msg.data);
             
             // O req_id isola o Radar para não travar o fluxo principal
-            if (data.req_id && data.msg_type !== 'proposal_open_contract') return; 
+            if (data.req_id && data.msg_type !== 'proposal_open_contract' && data.msg_type !== 'buy') return; 
 
             if (data.error) {
                 if (data.error.code === 'AlreadySubscribed') return; 
                 this.log(`Erro API: ${data.error.message}`, "error");
+                
+                // Reset de travas em caso de erro na compra
+                if(data.msg_type === 'buy') {
+                    this._isProcessingBuy = false;
+                    if (window.app) app.isTrading = false;
+                }
+                
                 if (callback) callback(data);
                 return;
             }
@@ -51,6 +59,7 @@ const DerivAPI = {
                 this.isAuthorized = true;
                 this.log("Autorização de conta confirmada.");
                 this.socket.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+                // Assinatura global de contratos - fundamental para monitoramento em tempo real
                 this.socket.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
                 this.subscribeCandles(this.callbacks['candles']);
             }
@@ -111,14 +120,20 @@ const DerivAPI = {
     },
 
     buy(type, stake, prefix, callback, extraParams = {}) {
-        if (!this.isAuthorized) return;
+        // CORREÇÃO: Impede múltiplas ordens simultâneas antes da resposta do servidor
+        if (!this.isAuthorized || this._isProcessingBuy) return;
+        
         if (window.app) app.isTrading = true;
+        this._isProcessingBuy = true;
 
         this.callbacks['buy'] = callback;
         this._pendingPrefix = prefix || 'm';
 
         const isFastAsset = this.currentSymbol.includes('1Z') || this.currentSymbol.includes('1HZ');
         
+        // CORREÇÃO: Gerar um req_id único para rastrear esta compra específica
+        const buyReqId = Date.now();
+
         const request = {
             buy: 1,
             price: parseFloat(stake),
@@ -131,7 +146,9 @@ const DerivAPI = {
                 duration_unit: extraParams.duration_unit || (isFastAsset ? 't' : 'm'), 
                 symbol: this.currentSymbol,
                 ...extraParams
-            }
+            },
+            passthrough: { prefix: this._pendingPrefix }, // Metadado seguro
+            req_id: buyReqId
         };
 
         this.socket.send(JSON.stringify(request));
@@ -169,52 +186,55 @@ const DerivAPI = {
             if (window.app) app.balance = val;
         }
 
-        // SOLUÇÃO PARA O ATRASO: Monitoramento agressivo do contrato
+        // MONITORAMENTO DE CONTRATO (POC)
         if (data.msg_type === 'proposal_open_contract') {
             const c = data.proposal_open_contract;
             if (!c) return;
 
-            // Log de progresso (Opcional: remove se quiser log limpo)
+            // Busca o prefixo associado a este ID de contrato
+            const prefix = this.activeContracts[c.contract_id];
+            
             if (!c.is_sold && window.app) {
-                document.getElementById('status-text').innerText = `Contrato Ativo: Profit ${c.profit}`;
+                const statusText = document.getElementById('status-text');
+                if (statusText) statusText.innerText = `Contrato Ativo: Profit ${c.profit}`;
             }
 
-            if (c.is_sold) {
-                const prefix = this.activeContracts[c.contract_id] || 'm';
-                const profit = parseFloat(c.profit);
-                
-                delete this.activeContracts[c.contract_id];
-                
-                if (window.app) {
-                    app.isTrading = false;
-                    app.updateModuleProfit(profit, prefix);
+            // CORREÇÃO: Verifica se o contrato foi fechado/vendido
+            if (c.status !== 'open' || c.is_sold) {
+                if (prefix) {
+                    const profit = parseFloat(c.profit);
+                    
+                    // Remove do mapeamento antes de atualizar a UI para evitar duplicidade
+                    delete this.activeContracts[c.contract_id];
+                    
+                    if (window.app) {
+                        app.isTrading = false;
+                        app.updateModuleProfit(profit, prefix);
+                    }
+                    
+                    document.dispatchEvent(new CustomEvent('contract_finished', { 
+                        detail: { prefix, profit, contract: c } 
+                    }));
+                    
+                    this.socket.send(JSON.stringify({ balance: 1 }));
+                    this.log(`Finalizado [${prefix}]. Payout: ${profit} | Status: ${c.status}`);
                 }
-                
-                document.dispatchEvent(new CustomEvent('contract_finished', { 
-                    detail: { prefix, profit, contract: c } 
-                }));
-                
-                // GATILHO DE ATUALIZAÇÃO IMEDIATA:
-                this.socket.send(JSON.stringify({ balance: 1 })); // Força atualização do saldo
-                if(c.subscription_id) this.socket.send(JSON.stringify({ forget: c.subscription_id })); // Limpa fluxo
-                
-                this.log(`Finalizado [${prefix}]. Payout: ${profit} | Saldo atualizado.`);
             }
         }
 
         if (data.msg_type === 'buy' && !data.error) {
-            this.activeContracts[data.buy.contract_id] = this._pendingPrefix;
-            this.log(`Ordem ID ${data.buy.contract_id} enviada. Aguardando...`);
+            // CORREÇÃO: Usa o passthrough ou o prefixo pendente de forma segura
+            const safePrefix = (data.echo_req.passthrough && data.echo_req.passthrough.prefix) ? data.echo_req.passthrough.prefix : this._pendingPrefix;
             
-            // Assina atualizações específicas para este contrato (Garante velocidade máxima)
-            this.socket.send(JSON.stringify({
-                proposal_open_contract: 1,
-                contract_id: data.buy.contract_id,
-                subscribe: 1
-            }));
+            this.activeContracts[data.buy.contract_id] = safePrefix;
+            this.log(`Ordem ID ${data.buy.contract_id} confirmada [${safePrefix}].`);
+            
+            // Libera a trava para a próxima compra, mas o app.isTrading continua true até o POC fechar
+            this._isProcessingBuy = false;
         }
         
         if (data.msg_type === 'buy' && data.error) {
+            this._isProcessingBuy = false;
             if (window.app) app.isTrading = false;
         }
     },
