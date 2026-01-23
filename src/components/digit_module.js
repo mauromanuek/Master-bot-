@@ -1,19 +1,21 @@
 const DigitModule = {
     tickBuffer: [],
-    maxTicks: 15, // SNIPER: Reduzido de 20 para 15 para focar na explosão imediata
+    maxTicks: 15, 
     isActive: false,
     currentProfit: 0,
     stats: { wins: 0, losses: 0 },
     _handler: null,
 
     render() {
+        // Garantimos que o ativo atual seja exibido corretamente na abertura da aba
+        const assetName = (window.app && app.currentAsset) ? app.currentAsset : "---";
         return `
             <div class="space-y-4 max-w-md mx-auto">
                 <div class="flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-bold text-yellow-500 italic uppercase leading-none">Digit Sniper</h2>
                         <span class="text-[8px] text-gray-500 font-mono uppercase tracking-widest">
-                            Ativo: <span id="d-current-asset" class="text-yellow-600">${app.currentAsset || '---'}</span>
+                            Ativo: <span id="d-current-asset" class="text-yellow-600">${assetName}</span>
                         </span>
                     </div>
                     <div id="d-indicator" class="w-3 h-3 rounded-full bg-gray-600 shadow-sm transition-colors"></div>
@@ -75,28 +77,41 @@ const DigitModule = {
         
         if (this.isActive) {
             btn.innerText = "PARAR OPERAÇÃO";
-            btn.classList.replace('bg-yellow-600', 'bg-red-600');
-            indicator.classList.replace('bg-gray-600', 'bg-yellow-500');
-            indicator.classList.add('animate-pulse');
+            btn.classList.remove('bg-yellow-600');
+            btn.classList.add('bg-red-600');
+            
+            indicator.classList.remove('bg-gray-600');
+            indicator.classList.add('bg-yellow-500', 'animate-pulse');
             
             this.tickBuffer = [];
             this.setupListener();
-            this.log(`MODO DIGIT SNIPER ATIVADO`, "text-yellow-400 font-bold");
+            this.log(`MODO DIGIT SNIPER ATIVADO EM ${app.currentAsset}`, "text-yellow-400 font-bold");
+            
+            // Atualiza o label do ativo caso tenha sido trocado
+            const label = document.getElementById('d-current-asset');
+            if(label) label.innerText = app.currentAsset;
+
         } else {
             btn.innerText = "Iniciar Operação Digits";
-            btn.classList.replace('bg-red-600', 'bg-yellow-600');
-            indicator.classList.replace('bg-yellow-500', 'bg-gray-600');
-            indicator.classList.remove('animate-pulse');
+            btn.classList.remove('bg-red-600');
+            btn.classList.add('bg-yellow-600');
+            
+            indicator.classList.remove('bg-yellow-500', 'animate-pulse');
+            indicator.classList.add('bg-gray-600');
+            
             this.log("SISTEMA PAUSADO", "text-gray-500");
             app.isTrading = false;
         }
     },
 
     setupListener() {
-        if (this._handler) document.removeEventListener('contract_finished', this._handler);
+        // CORREÇÃO: Limpeza rigorosa do ouvinte de eventos
+        if (this._handler) {
+            document.removeEventListener('contract_finished', this._handler);
+        }
+        
         this._handler = (e) => {
-            if (e.detail && e.detail.prefix === 'd') {
-                // A DerivAPI dispara esse evento no milissegundo do fechamento
+            if (this.isActive && e.detail && e.detail.prefix === 'd') {
                 this.handleContractResult(e.detail.profit);
             }
         };
@@ -104,17 +119,25 @@ const DigitModule = {
     },
 
     processTick(tick) {
-        if (!this.isActive) return;
+        if (!this.isActive || !tick || !tick.quote) return;
 
-        const lastDigit = parseInt(tick.quote.toString().slice(-1));
+        // Extrai o último dígito do preço
+        const quoteStr = tick.quote.toString();
+        const lastDigit = parseInt(quoteStr.charAt(quoteStr.length - 1));
+        
+        if (isNaN(lastDigit)) return;
+
         this.tickBuffer.push(lastDigit);
         
-        if (this.tickBuffer.length > this.maxTicks) this.tickBuffer.shift();
+        // Mantém o buffer no tamanho sniper
+        if (this.tickBuffer.length > this.maxTicks) {
+            this.tickBuffer.shift();
+        }
         
         this.updateUI();
 
-        // Só tenta entrar se o bot não estiver em uma operação aberta
-        if (!app.isTrading) {
+        // Só verifica entrada se não houver operação em curso
+        if (window.app && !app.isTrading) {
             this.checkEntry();
         }
     },
@@ -129,39 +152,46 @@ const DigitModule = {
         const pOver = Math.round((over5 / total) * 100);
         const pUnder = Math.round((under5 / total) * 100);
 
-        document.getElementById('perc-over').innerText = pOver + "%";
-        document.getElementById('perc-under').innerText = pUnder + "%";
-        
-        document.getElementById('bar-over').style.width = pOver + "%";
-        document.getElementById('bar-under').style.width = pUnder + "%";
+        const elOver = document.getElementById('perc-over');
+        const elUnder = document.getElementById('perc-under');
+        const barOver = document.getElementById('bar-over');
+        const barUnder = document.getElementById('bar-under');
+
+        if (elOver) elOver.innerText = pOver + "%";
+        if (elUnder) elUnder.innerText = pUnder + "%";
+        if (barOver) barOver.style.width = pOver + "%";
+        if (barUnder) barUnder.style.width = pUnder + "%";
 
         const boxOver = document.getElementById('box-over');
         const boxUnder = document.getElementById('box-under');
         
-        // Alerta visual de gatilho (70%+)
-        boxOver.style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
-        boxUnder.style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
+        if (boxOver) boxOver.style.borderColor = pOver >= 70 ? '#eab308' : 'transparent';
+        if (boxUnder) boxUnder.style.borderColor = pUnder >= 70 ? '#3b82f6' : 'transparent';
     },
 
     checkEntry() {
-        // Reduzido para 10 ticks: sniper de alta frequência
-        if (this.tickBuffer.length < 10 || app.isTrading) return;
+        if (this.tickBuffer.length < 10 || (window.app && app.isTrading)) return;
 
         const total = this.tickBuffer.length;
-        const pOver = (this.tickBuffer.filter(d => d > 5).length / total) * 100;
-        const pUnder = (this.tickBuffer.filter(d => d < 5).length / total) * 100;
+        const over5Count = this.tickBuffer.filter(d => d > 5).length;
+        const under5Count = this.tickBuffer.filter(d => d < 5).length;
         
-        const stake = document.getElementById('d-stake')?.value || 1;
+        const pOver = (over5Count / total) * 100;
+        const pUnder = (under5Count / total) * 100;
+        
+        const stakeEl = document.getElementById('d-stake');
+        const stake = stakeEl ? parseFloat(stakeEl.value) : 1.00;
 
-        if (pOver >= 70) {
+        // Lógica de Gatilho Sniper: Prioridade para a maior probabilidade
+        if (pOver >= 75) {
             this.execute('DIGITOVER', stake);
-        } else if (pUnder >= 70) {
+        } else if (pUnder >= 75) {
             this.execute('DIGITUNDER', stake);
         }
     },
 
     execute(type, stake) {
-        if (app.isTrading) return;
+        if (window.app && app.isTrading) return;
         
         app.isTrading = true;
         this.log(`TIRO EXECUTADO: ${type}`, "text-yellow-500 font-bold");
@@ -174,10 +204,10 @@ const DigitModule = {
         
         DerivAPI.buy(type, stake, 'd', (res) => {
             if (res.error) {
-                this.log(`API BUSY: ${res.error.message}`, "text-red-500");
+                this.log(`FALHA: ${res.error.message}`, "text-red-500");
                 app.isTrading = false;
             } else {
-                this.log("AGUARDANDO RESULTADO TICK...", "text-blue-400 animate-pulse");
+                this.log("EM MERCADO... AGUARDANDO TICK", "text-blue-400 animate-pulse");
             }
         }, params);
     },
@@ -186,19 +216,19 @@ const DigitModule = {
         this.currentProfit += profit;
         
         if (profit > 0) this.stats.wins++;
-        else this.stats.losses++;
+        else if (profit < 0) this.stats.losses++;
 
         const color = profit > 0 ? "text-green-400" : "text-red-400";
-        const icon = profit > 0 ? "✅" : "❌";
-        this.log(`${icon} RESULTADO: $${profit.toFixed(2)}`, `${color} font-bold`);
+        const status = profit > 0 ? "WIN" : "LOSS";
+        this.log(`RESULTADO: ${status} ($${profit.toFixed(2)})`, `${color} font-bold`);
         
-        // Limpa o buffer para ler o novo fluxo de mercado (Fuga de manipulação)
+        // CORREÇÃO: Limpa o buffer para evitar reentrada imediata no mesmo sinal (Anti-manipulação)
         this.tickBuffer = [];
         
-        // Liberação instantânea para ler o próximo padrão
-        app.isTrading = false;
-        
-        // Atualiza UI Global
-        if (window.app) app.updateModuleProfit(profit, 'd');
+        // Sincroniza com o App Principal
+        if (window.app) {
+            app.updateModuleProfit(profit, 'd');
+            // O app.updateModuleProfit já seta app.isTrading = false
+        }
     }
 };
