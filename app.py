@@ -21,7 +21,7 @@ def motor_sniper_core(asset, velas, agressividade="high"):
         return {
             "direcao": "NEUTRO", 
             "confianca": 0, 
-            "motivo": f"Sincronizando: {len(velas) if velas else 0}/{min_velas} velas"
+            "motivo": f"AGUARDANDO DADOS: {len(velas) if velas else 0}/{min_velas}"
         }
 
     try:
@@ -31,7 +31,6 @@ def motor_sniper_core(asset, velas, agressividade="high"):
         minimas = []
 
         for v in velas:
-            # Garantimos que o valor seja tratado como float mesmo se vier como string
             raw_c = v.get('c') if v.get('c') is not None else v.get('close', 0)
             raw_h = v.get('h') if v.get('h') is not None else v.get('high', 0)
             raw_l = v.get('l') if v.get('l') is not None else v.get('low', 0)
@@ -45,13 +44,12 @@ def motor_sniper_core(asset, velas, agressividade="high"):
                 maximas.append(h)
                 minimas.append(l)
 
-        # Re-checagem após limpeza de dados
         if len(fechamentos) < min_velas:
-            return {"direcao": "NEUTRO", "confianca": 0, "motivo": "Buffer insuficiente"}
+            return {"direcao": "NEUTRO", "confianca": 0, "motivo": "BUFFER INSUFICIENTE"}
 
         atual = fechamentos[-1]
         
-        # Função interna de EMA com proteção contra divisão por zero
+        # Função interna de EMA
         def calcular_ema(dados, periodo):
             if not dados: return 0
             k = 2 / (periodo + 1)
@@ -60,55 +58,48 @@ def motor_sniper_core(asset, velas, agressividade="high"):
                 ema = (preco * k) + (ema * (1 - k))
             return ema
 
-        # AJUSTE SNIPER: Médias Curtas para Scalping de 1-5 Ticks/Minutos
         ema_super_fast = calcular_ema(fechamentos, 3) 
         ema_fast = calcular_ema(fechamentos, 5)       
         
-        # SNIPER: Micro-Resistência e Suporte (Reduzido para as últimas 4 velas)
-        # Isso identifica rompimentos muito mais cedo.
+        # SNIPER: Micro-Resistência e Suporte (últimas 4 velas)
         resistencia_curta = max(maximas[-4:])
         suporte_curto = min(minimas[-4:])
         
         # Volatilidade (ATR simplificado das últimas 5 velas)
-        # Usamos uma janela pequena para captar explosões rápidas
-        diffs = []
-        for i in range(max(-5, -len(maximas)), 0):
-            diffs.append(maximas[i] - minimas[i])
-        atp_calc = sum(diffs) / len(diffs) if diffs else 0.00000001
-        atp = max(atp_calc, 0.00000001)
+        diffs = [maximas[i] - minimas[i] for i in range(max(-5, -len(maximas)), 0)]
+        atp = max(sum(diffs) / len(diffs) if diffs else 0.00000001, 0.00000001)
 
         direcao = "NEUTRO"
         confianca = 0
-        motivo = "Aguardando Explosão"
+        motivo = "MERCADO LATERAL: Aguardando Rompimento"
         
-        # Momentum em relação ao candle imediatamente anterior (com ajuste de precisão)
+        # Momentum (ajustado para ser mais sensível)
         momentum = round(atual - fechamentos[-2], 8)
 
-        # --- LÓGICA DE DECISÃO SNIPER ---
+        # --- LÓGICA DE DECISÃO SNIPER (Filtros Relaxados para Scalping) ---
         
         # 1. GATILHO CALL (ALTA)
-        # Se a média de 3 cruza a de 5 e o preço rompe a máxima das últimas 4 velas
-        if ema_super_fast > (ema_fast + (atp * 0.01)): # Reduzido threshold de 0.02 para 0.01 para maior rapidez
-            if atual >= (resistencia_curta - (atp * 0.01)) and momentum >= 0:
+        if ema_super_fast > ema_fast:
+            # Se o preço está acima da resistência ou mostrou forte rejeição no suporte
+            if atual >= (resistencia_curta - (atp * 0.1)):
                 direcao = "CALL"
-                confianca = 91 if agressividade == "high" else 80
-                motivo = "SNIPER: Rompimento de micro-topo detectado"
-            elif atual <= (suporte_curto + (atp * 0.05)):
+                confianca = 92 if momentum > 0 else 75
+                motivo = "SNIPER: Tendência de Alta confirmada"
+            elif atual <= (suporte_curto + (atp * 0.2)):
                 direcao = "CALL"
-                confianca = 85
-                motivo = "REJEIÇÃO: Reteste de suporte curto"
+                confianca = 80
+                motivo = "REJEIÇÃO: Suporte respeitado"
 
         # 2. GATILHO PUT (BAIXA)
-        # Se a média de 3 cai abaixo da de 5 e o preço rompe a mínima das últimas 4 velas
-        elif ema_super_fast < (ema_fast - (atp * 0.01)): # Reduzido threshold de 0.02 para 0.01 para maior rapidez
-            if atual <= (suporte_curto + (atp * 0.01)) and momentum <= 0:
+        elif ema_super_fast < ema_fast:
+            if atual <= (suporte_curto + (atp * 0.1)):
                 direcao = "PUT"
-                confianca = 91 if agressividade == "high" else 80
-                motivo = "SNIPER: Rompimento de micro-fundo detectado"
-            elif atual >= (resistencia_curta - (atp * 0.05)):
+                confianca = 92 if momentum < 0 else 75
+                motivo = "SNIPER: Tendência de Baixa confirmada"
+            elif atual >= (resistencia_curta - (atp * 0.2)):
                 direcao = "PUT"
-                confianca = 85
-                motivo = "REJEIÇÃO: Reteste de resistência curta"
+                confianca = 80
+                motivo = "REJEIÇÃO: Resistência respeitada"
 
         return {
             "direcao": direcao,
@@ -119,8 +110,6 @@ def motor_sniper_core(asset, velas, agressividade="high"):
         }
     except Exception as e:
         return {"direcao": "NEUTRO", "confianca": 0, "motivo": f"Erro Engine: {str(e)}"}
-
-# --- ROTAS API ---
 
 @app.route('/')
 def index():
