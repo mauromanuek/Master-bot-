@@ -25,15 +25,20 @@ def motor_sniper_core(asset, velas, agressividade="high"):
         }
 
     try:
-        # Extração de preços eficiente
+        # Extração de preços eficiente com tratamento de tipos
         fechamentos = []
         maximas = []
         minimas = []
 
         for v in velas:
-            c = float(v.get('c') if v.get('c') is not None else v.get('close', 0))
-            h = float(v.get('h') if v.get('h') is not None else v.get('high', 0))
-            l = float(v.get('l') if v.get('l') is not None else v.get('low', 0))
+            # Garantimos que o valor seja tratado como float mesmo se vier como string
+            raw_c = v.get('c') if v.get('c') is not None else v.get('close', 0)
+            raw_h = v.get('h') if v.get('h') is not None else v.get('high', 0)
+            raw_l = v.get('l') if v.get('l') is not None else v.get('low', 0)
+            
+            c = float(raw_c)
+            h = float(raw_h)
+            l = float(raw_l)
             
             if c > 0:
                 fechamentos.append(c)
@@ -46,7 +51,7 @@ def motor_sniper_core(asset, velas, agressividade="high"):
 
         atual = fechamentos[-1]
         
-        # Função interna de EMA
+        # Função interna de EMA com proteção contra divisão por zero
         def calcular_ema(dados, periodo):
             if not dados: return 0
             k = 2 / (periodo + 1)
@@ -65,22 +70,26 @@ def motor_sniper_core(asset, velas, agressividade="high"):
         suporte_curto = min(minimas[-4:])
         
         # Volatilidade (ATR simplificado das últimas 5 velas)
-        atp_calc = sum([maximas[i] - minimas[i] for i in range(max(-5, -len(maximas)), 0)]) / 5
+        # Usamos uma janela pequena para captar explosões rápidas
+        diffs = []
+        for i in range(max(-5, -len(maximas)), 0):
+            diffs.append(maximas[i] - minimas[i])
+        atp_calc = sum(diffs) / len(diffs) if diffs else 0.00000001
         atp = max(atp_calc, 0.00000001)
 
         direcao = "NEUTRO"
         confianca = 0
         motivo = "Aguardando Explosão"
         
-        # Momentum em relação ao candle imediatamente anterior
-        momentum = atual - fechamentos[-2]
+        # Momentum em relação ao candle imediatamente anterior (com ajuste de precisão)
+        momentum = round(atual - fechamentos[-2], 8)
 
         # --- LÓGICA DE DECISÃO SNIPER ---
         
         # 1. GATILHO CALL (ALTA)
         # Se a média de 3 cruza a de 5 e o preço rompe a máxima das últimas 4 velas
-        if ema_super_fast > (ema_fast + (atp * 0.02)):
-            if atual >= resistencia_curta and momentum > 0:
+        if ema_super_fast > (ema_fast + (atp * 0.01)): # Reduzido threshold de 0.02 para 0.01 para maior rapidez
+            if atual >= (resistencia_curta - (atp * 0.01)) and momentum >= 0:
                 direcao = "CALL"
                 confianca = 91 if agressividade == "high" else 80
                 motivo = "SNIPER: Rompimento de micro-topo detectado"
@@ -91,8 +100,8 @@ def motor_sniper_core(asset, velas, agressividade="high"):
 
         # 2. GATILHO PUT (BAIXA)
         # Se a média de 3 cai abaixo da de 5 e o preço rompe a mínima das últimas 4 velas
-        elif ema_super_fast < (ema_fast - (atp * 0.02)):
-            if atual <= suporte_curto and momentum < 0:
+        elif ema_super_fast < (ema_fast - (atp * 0.01)): # Reduzido threshold de 0.02 para 0.01 para maior rapidez
+            if atual <= (suporte_curto + (atp * 0.01)) and momentum <= 0:
                 direcao = "PUT"
                 confianca = 91 if agressividade == "high" else 80
                 motivo = "SNIPER: Rompimento de micro-fundo detectado"
