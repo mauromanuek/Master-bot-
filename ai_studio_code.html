@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Bot | Terminal Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=JetBrains+Mono&display=swap');
+        body { background-color: #0b0e11; color: #eaecef; font-family: 'Inter', sans-serif; overflow: hidden; }
+        .view-section { display: none; height: 100%; width: 100%; flex-direction: column; }
+        .view-section.active { display: flex; }
+        #analysis-menu { display: none; transform: translateY(-10px); opacity: 0; transition: all 0.2s ease; }
+        #analysis-menu.show { display: block; transform: translateY(0); opacity: 1; }
+        .mode-btn { transition: all 0.3s; border-top: 3px solid transparent; opacity: 0.4; }
+        .mode-btn.active { border-top-color: #fcd535; background: #1e2329; color: #fcd535; opacity: 1; }
+        .analysis-card { background: #161a1e; border: 1px solid #2b3139; border-radius: 24px; }
+        #log-window { background: #000; font-family: 'JetBrains+Mono', monospace; font-size: 10px; color: #4ade80; overflow-y: auto; border: 1px solid #1e2329; height: 100%; }
+        .log-entry { border-bottom: 1px solid #111; padding: 4px 8px; }
+        .log-success { color: #22c55e; font-weight: bold; }
+        .log-warn { color: #fcd535; }
+        .log-error { color: #ef4444; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #2b3139; border-radius: 10px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col" onclick="ui.closeAllMenus()">
+
+    <!-- LOGIN -->
+    <div id="view-login" class="fixed inset-0 z-[200] bg-[#0b0e11] flex items-center justify-center p-6">
+        <div class="w-full max-w-md bg-[#161a1e] p-10 rounded-[40px] border border-gray-800 shadow-2xl text-center">
+            <div class="mb-8 text-center">
+                <div class="w-20 h-20 bg-yellow-500 rounded-3xl mx-auto flex items-center justify-center mb-4">
+                    <i class="fas fa-terminal text-black text-3xl"></i>
+                </div>
+                <h1 class="text-2xl font-black uppercase tracking-tighter">Master <span class="text-yellow-500">Core</span></h1>
+            </div>
+            <div class="space-y-4">
+                <input type="password" id="api-token" placeholder="Insira seu Deriv API Token" class="w-full bg-black border border-gray-800 p-5 rounded-2xl outline-none focus:border-yellow-500 text-white font-mono text-center">
+                <button onclick="core.init()" class="w-full py-5 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-widest hover:bg-yellow-400 transition-all">Conectar Terminal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header id="main-header" class="h-20 border-b border-gray-800 bg-[#0b0e11] hidden items-center justify-between px-6 z-50">
+        <div class="relative">
+            <button onclick="ui.toggleAnalysisMenu(event)" class="bg-[#1e2329] px-4 py-2 rounded-lg border border-gray-700 flex items-center gap-3">
+                <i class="fas fa-brain text-yellow-500 text-xs"></i>
+                <span id="selected-analysis-name" class="font-bold uppercase text-[11px]">Scalper</span>
+                <i class="fas fa-chevron-down text-[10px] text-gray-500"></i>
+            </button>
+            <div id="analysis-menu" class="absolute left-0 mt-2 w-56 bg-[#1e2329] border border-gray-700 rounded-xl shadow-2xl z-[100]">
+                <div onclick="ui.setStrategy('Scalper')" class="p-4 hover:bg-gray-800 text-xs font-bold border-b border-gray-800/50 cursor-pointer uppercase">⚡ Scalper</div>
+                <div onclick="ui.setStrategy('Caça Ganho')" class="p-4 hover:bg-gray-800 text-xs font-bold border-b border-gray-800/50 cursor-pointer uppercase">🎯 Caça Ganho</div>
+                <div onclick="ui.setStrategy('Análise Profunda')" class="p-4 hover:bg-gray-800 text-xs font-bold cursor-pointer uppercase">🧠 Análise Profunda</div>
+            </div>
+        </div>
+        <div id="acc-balance" class="font-mono text-green-500 font-black text-xl">$ 0.00</div>
+    </header>
+
+    <main id="main-content" class="flex-1 relative bg-[#0b0e11] overflow-hidden hidden">
+        <!-- ABA ANÁLISE (MANUAL) -->
+        <section id="mode-analysis" class="view-section active p-6 justify-center items-center">
+            <div class="w-full max-w-4xl text-center mb-8">
+                <span id="price-display" class="text-gray-500 font-mono text-xs block mb-4">Aguardando Conexão...</span>
+                <div class="analysis-card p-12 relative overflow-hidden">
+                    <div id="signal-display" class="text-7xl font-black text-white mb-6 uppercase italic">---</div>
+                    <p id="strategy-desc" class="text-gray-500 text-[10px] uppercase font-mono">Sistema de Radar Desativado</p>
+                    <div class="w-full bg-gray-900 h-1.5 mt-8 rounded-full overflow-hidden">
+                        <div id="signal-strength" class="bg-yellow-500 h-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+            <button onclick="ui.toggleAnalysis()" id="btn-analysis-control" class="w-full max-w-xs py-5 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest">Iniciar Radar</button>
+        </section>
+
+        <!-- ABA ROBÔ (AUTOMÁTICO) -->
+        <section id="mode-auto" class="view-section p-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+                <div class="bg-[#161a1e] p-8 rounded-[40px] border border-gray-800 flex flex-col justify-between">
+                    <div class="space-y-6">
+                        <h2 class="text-xl font-black uppercase italic text-yellow-500">Robot Config</h2>
+                        <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                            <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2">Stake (Entrada)</label>
+                            <input type="number" id="inp-stake" value="0.35" class="bg-transparent text-2xl font-black outline-none w-full text-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                                <label class="text-[9px] text-green-500 font-bold uppercase block mb-2">Meta (TP)</label>
+                                <input type="number" id="inp-tp" value="5.00" class="bg-transparent text-xl font-bold outline-none w-full">
+                            </div>
+                            <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                                <label class="text-[9px] text-red-500 font-bold uppercase block mb-2">Stop (SL)</label>
+                                <input type="number" id="inp-sl" value="10.00" class="bg-transparent text-xl font-bold outline-none w-full">
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="ui.toggleBot()" id="btn-bot" class="w-full py-6 bg-yellow-500 text-black font-black rounded-3xl uppercase tracking-widest mt-8">Iniciar Operação</button>
+                </div>
+                <div id="log-window" class="rounded-[40px] p-4"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="main-footer" class="h-20 border-t border-gray-800 bg-[#1e2329] hidden grid-cols-2">
+        <button onclick="ui.switchMode('analysis')" id="tab-analysis" class="mode-btn active flex flex-col items-center justify-center">
+            <i class="fas fa-satellite-dish mb-1"></i><span class="text-[10px] font-bold uppercase">Radar</span>
+        </button>
+        <button onclick="ui.switchMode('auto')" id="tab-auto" class="mode-btn flex flex-col items-center justify-center">
+            <i class="fas fa-robot mb-1"></i><span class="text-[10px] font-bold uppercase">Bot</span>
+        </button>
+    </footer>
+
+    <!-- Scripts Externos que vamos criar a seguir -->
+    <script src="src/deriv_api.js"></script>
+    <script src="src/brain.js"></script>
+    <script src="src/risk_manager.js"></script>
+    <script src="src/ui_controller.js"></script>
+</body>
+</html>
