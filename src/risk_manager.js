@@ -52,7 +52,8 @@ const ui = {
     },
 
     closeAllMenus() {
-        document.getElementById('analysis-menu').classList.remove('show');
+        const menu = document.getElementById('analysis-menu');
+        if (menu) menu.classList.remove('show');
     },
 
     setStrategy(name) {
@@ -72,6 +73,8 @@ const ui = {
         const disp = document.getElementById('signal-display');
         const desc = document.getElementById('strategy-desc');
         const bar = document.getElementById('signal-strength');
+
+        if (!disp || !desc || !bar) return;
 
         disp.innerText = signal;
         desc.innerText = reason;
@@ -102,6 +105,8 @@ const ui = {
     // 7. SISTEMA DE LOGS PROFISSIONAL
     addLog(msg, type = "info") {
         const logWin = document.getElementById('log-window');
+        if (!logWin) return;
+
         const now = new Date().toLocaleTimeString();
         
         const logEntry = document.createElement('div');
@@ -124,8 +129,52 @@ const ui = {
         if (logWin.childNodes.length > 50) {
             logWin.removeChild(logWin.firstChild);
         }
+    },
+
+    // 8. FUNÇÃO DE LIMPEZA DO TERMINAL (BOTÃO DE LUXO)
+    clearTerminal() {
+        // Bloqueia o reset se o bot estiver em operação para evitar erros matemáticos
+        if (this.isBotRunning) {
+            alert("Atenção: Pare o robô antes de resetar as estatísticas da sessão!");
+            return;
+        }
+
+        // Solicita confirmação do operador
+        if (confirm("Deseja zerar todos os logs e os contadores de Win/Loss da sessão atual?")) {
+            
+            // Reseta a lógica interna no Gerenciador de Risco
+            if (typeof RiskManager !== 'undefined') {
+                RiskManager.resetSessao();
+            }
+
+            // Reseta visualmente o painel de Logs
+            const logWindow = document.getElementById('log-window');
+            if (logWindow) {
+                logWindow.innerHTML = '<div class="log-entry text-gray-500 italic">> Sessão reiniciada. Terminal limpo com sucesso.</div>';
+            }
+
+            // Reseta visualmente o Placar de Wins/Losses
+            const winsEl = document.getElementById('stat-wins');
+            const lossesEl = document.getElementById('stat-losses');
+            
+            if (winsEl) winsEl.innerText = '0';
+            if (lossesEl) lossesEl.innerText = '0';
+
+            // Registra a ação no novo log
+            this.addLog("As estatísticas e logs foram redefinidos para o padrão inicial.", "warn");
+        }
     }
 };
 
-// Listener para fechar menus ao clicar fora
-document.addEventListener('click', () => ui.closeAllMenus());
+// Listener global para fechar os menus de estratégia ao clicar em qualquer área neutra
+document.addEventListener('click', (event) => {
+    const strategyBtn = document.getElementById('btn-strategy');
+    const analysisMenu = document.getElementById('analysis-menu');
+    
+    // Se o clique não foi no botão e nem dentro do menu, fecha o menu
+    if (strategyBtn && analysisMenu) {
+        if (!strategyBtn.contains(event.target) && !analysisMenu.contains(event.target)) {
+            ui.closeAllMenus();
+        }
+    }
+});
