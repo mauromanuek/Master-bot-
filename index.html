@@ -46,7 +46,7 @@
     <!-- HEADER -->
     <header id="main-header" class="h-20 border-b border-gray-800 bg-[#0b0e11] hidden items-center justify-between px-6 z-50">
         <div class="relative">
-            <button onclick="ui.toggleAnalysisMenu(event)" class="bg-[#1e2329] px-4 py-2 rounded-lg border border-gray-700 flex items-center gap-3">
+            <button onclick="ui.toggleAnalysisMenu(event)" class="bg-[#1e2329] px-4 py-2 rounded-lg border border-gray-700 flex items-center gap-3 hover:border-yellow-500 transition-colors">
                 <i class="fas fa-brain text-yellow-500 text-xs"></i>
                 <span id="selected-analysis-name" class="font-bold uppercase text-[11px]">Scalper</span>
                 <i class="fas fa-chevron-down text-[10px] text-gray-500"></i>
@@ -73,7 +73,7 @@
                     </div>
                 </div>
             </div>
-            <button onclick="ui.toggleAnalysis()" id="btn-analysis-control" class="w-full max-w-xs py-5 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest">Iniciar Radar</button>
+            <button onclick="ui.toggleAnalysis()" id="btn-analysis-control" class="w-full max-w-xs py-5 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-widest transition-all active:scale-95">Iniciar Radar</button>
         </section>
 
         <!-- ABA ROBÔ (AUTOMÁTICO) -->
@@ -97,23 +97,49 @@
                             </div>
                         </div>
                     </div>
-                    <button onclick="ui.toggleBot()" id="btn-bot" class="w-full py-6 bg-yellow-500 text-black font-black rounded-3xl uppercase tracking-widest mt-8">Iniciar Operação</button>
+                    <button onclick="ui.toggleBot()" id="btn-bot" class="w-full py-6 bg-yellow-500 text-black font-black rounded-3xl uppercase tracking-widest mt-8 transition-all active:scale-95">Iniciar Operação</button>
                 </div>
-                <div id="log-window" class="rounded-[40px] p-4"></div>
+
+                <!-- PAINEL DE LOGS E ESTATÍSTICAS -->
+                <div class="flex flex-col h-full overflow-hidden">
+                    <div class="flex justify-between items-center mb-4 px-2">
+                        <!-- Placar de Operações -->
+                        <div class="flex gap-4">
+                            <div class="flex flex-col">
+                                <span class="text-[8px] text-green-500 font-bold uppercase tracking-widest">Wins</span>
+                                <span id="stat-wins" class="text-xl font-black text-white leading-none">0</span>
+                            </div>
+                            <div class="flex flex-col border-l border-gray-800 pl-4">
+                                <span class="text-[8px] text-red-500 font-bold uppercase tracking-widest">Losses</span>
+                                <span id="stat-losses" class="text-xl font-black text-white leading-none">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Botão de Luxo para Limpar Logs/Stats -->
+                        <button onclick="ui.clearTerminal()" title="Resetar Sessão" 
+                            class="w-10 h-10 rounded-full bg-gradient-to-b from-yellow-400 to-yellow-600 flex items-center justify-center shadow-lg shadow-yellow-900/40 hover:scale-110 active:scale-95 transition-all border border-yellow-200/20">
+                            <i class="fas fa-trash-alt text-black text-xs"></i>
+                        </button>
+                    </div>
+
+                    <div id="log-window" class="rounded-[40px] p-4 shadow-inner">
+                        <div class="log-entry text-gray-500 italic">> Terminal aguardando inicialização...</div>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
 
     <footer id="main-footer" class="h-20 border-t border-gray-800 bg-[#1e2329] hidden grid-cols-2">
-        <button onclick="ui.switchMode('analysis')" id="tab-analysis" class="mode-btn active flex flex-col items-center justify-center">
-            <i class="fas fa-satellite-dish mb-1"></i><span class="text-[10px] font-bold uppercase">Radar</span>
+        <button onclick="ui.switchMode('analysis')" id="tab-analysis" class="mode-btn active flex flex-col items-center justify-center gap-1">
+            <i class="fas fa-satellite-dish text-xs"></i><span class="text-[10px] font-bold uppercase tracking-widest">Radar</span>
         </button>
-        <button onclick="ui.switchMode('auto')" id="tab-auto" class="mode-btn flex flex-col items-center justify-center">
-            <i class="fas fa-robot mb-1"></i><span class="text-[10px] font-bold uppercase">Bot</span>
+        <button onclick="ui.switchMode('auto')" id="tab-auto" class="mode-btn flex flex-col items-center justify-center gap-1">
+            <i class="fas fa-robot text-xs"></i><span class="text-[10px] font-bold uppercase tracking-widest">Bot</span>
         </button>
     </footer>
 
-    <!-- Scripts Externos que vamos criar a seguir -->
+    <!-- Scripts Externos -->
     <script src="src/deriv_api.js"></script>
     <script src="src/brain.js"></script>
     <script src="src/risk_manager.js"></script>
