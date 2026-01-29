@@ -128,16 +128,17 @@ const core = {
         if (typeof RiskManager !== 'undefined') {
             if (!RiskManager.canTrade(analysis)) return;
 
-            const settings = RiskManager.getSettings();
-            this.isTrading = true;
+            // BUSCA A STAKE CALCULADA (Pode ser o valor inicial ou Martingale)
+            const tradeStake = RiskManager.getNextStake(side);
             
-            ui.addLog(`🚀 Enviando ${side} ($${settings.stake})`, "info");
+            this.isTrading = true;
+            ui.addLog(`🚀 Enviando ${side} ($${tradeStake})`, "info");
 
             this.ws.send(JSON.stringify({
                 buy: 1,
-                price: parseFloat(settings.stake),
+                price: parseFloat(tradeStake),
                 parameters: {
-                    amount: parseFloat(settings.stake),
+                    amount: parseFloat(tradeStake),
                     basis: 'stake',
                     contract_type: side,
                     currency: 'USD',
@@ -158,14 +159,15 @@ const core = {
         if (typeof RiskManager !== 'undefined') {
             if (!RiskManager.canTrade({ strength: signal.conf })) return;
 
-            const settings = RiskManager.getSettings();
+            // BUSCA A STAKE CALCULADA (Martingale específico para dígitos)
+            const tradeStake = RiskManager.getNextStake(signal.type);
+            
             this.isTrading = true;
-
-            ui.addLog(`🎲 ${signal.name} [$${settings.stake}]`, "info");
+            ui.addLog(`🎲 ${signal.name} [$${tradeStake}]`, "info");
 
             // Define os parâmetros baseados na estratégia de dígito
             let params = {
-                amount: parseFloat(settings.stake),
+                amount: parseFloat(tradeStake),
                 basis: 'stake',
                 contract_type: signal.type,
                 currency: 'USD',
@@ -181,7 +183,7 @@ const core = {
 
             this.ws.send(JSON.stringify({
                 buy: 1,
-                price: parseFloat(settings.stake),
+                price: parseFloat(tradeStake),
                 parameters: params,
                 subscribe: 1
             }));
