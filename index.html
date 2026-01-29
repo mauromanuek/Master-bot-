@@ -165,13 +165,13 @@
 
                 <!-- Botões de Controle Dígitos -->
                 <div class="flex items-center gap-3">
-                    <button class="w-12 h-12 rounded-xl bg-[#161a1e] border border-gray-800 text-gray-400 flex items-center justify-center hover:text-white transition-colors">
+                    <button onclick="ui.toggleDigitSettings()" class="w-12 h-12 rounded-xl bg-[#161a1e] border border-gray-800 text-yellow-500 flex items-center justify-center hover:scale-105 transition-all">
                         <i class="fas fa-cog"></i>
                     </button>
                     <button id="btn-digit-bot" onclick="ui.toggleDigitBot()" class="flex-1 py-4 bg-green-600 text-white rounded-xl font-black uppercase tracking-[0.2em] shadow-lg shadow-green-900/20 active:scale-95 transition-all">
                         Analisar & Operar
                     </button>
-                    <button onclick="ui.clearTerminal()" class="w-12 h-12 rounded-xl bg-[#161a1e] border border-gray-800 text-yellow-500 flex items-center justify-center hover:scale-105 transition-all">
+                    <button onclick="ui.clearTerminal()" class="w-12 h-12 rounded-xl bg-[#161a1e] border border-gray-800 text-yellow-500 flex items-center justify-center active:scale-90 transition-all">
                         <i class="fas fa-trash-alt"></i>
                     </button>
                 </div>
@@ -202,7 +202,7 @@
         </section>
     </main>
 
-    <!-- RODAPÉ ATUALIZADO (3 COLUNAS) -->
+    <!-- RODAPÉ NAVEGAÇÃO -->
     <footer id="main-footer" class="h-20 border-t border-gray-800 bg-[#1e2329] hidden grid-cols-3">
         <button onclick="ui.switchMode('analysis')" id="tab-analysis" class="mode-btn active flex flex-col items-center justify-center gap-1">
             <i class="fas fa-satellite-dish text-xs"></i>
@@ -217,6 +217,55 @@
             <span class="text-[10px] font-bold uppercase tracking-widest">Dígitos</span>
         </button>
     </footer>
+
+    <!-- MODAL DE DEFINIÇÕES (ESTILO LUXO) -->
+    <div id="digit-settings-modal" class="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm hidden items-center justify-center p-6">
+        <div class="w-full max-w-sm bg-[#161a1e] rounded-[40px] border border-gray-800 shadow-2xl p-8 relative">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-xl font-black uppercase italic text-yellow-500 tracking-tighter">Definições</h2>
+                <button onclick="ui.toggleDigitSettings()" class="text-gray-500 hover:text-white transition-colors text-xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-5">
+                <!-- Seletor de Estratégia -->
+                <div>
+                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2 tracking-widest">Estratégia Ativa</label>
+                    <select id="select-digit-strategy" class="w-full bg-black border border-gray-800 p-4 rounded-2xl outline-none text-white text-xs font-bold uppercase appearance-none">
+                        <option value="Coringa Cash">⚡ Coringa Cash (Under 7)</option>
+                        <option value="Divergência Zero">🎯 Divergência Zero (Differ 0)</option>
+                        <option value="Explosão Over">🔥 Explosão Over (Over 2)</option>
+                        <option value="Paridade Real">⚖️ Paridade Real (Odd/Even)</option>
+                        <option value="Sniper Differ">🎯 Sniper Differ (Repetição)</option>
+                    </select>
+                </div>
+
+                <!-- Stake -->
+                <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2">Stake de Entrada ($)</label>
+                    <input type="number" id="digit-stake" value="0.35" class="bg-transparent text-2xl font-black outline-none w-full text-yellow-500">
+                </div>
+
+                <!-- TP / SL -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                        <label class="text-[9px] text-green-500 font-bold uppercase block mb-2">Meta TP</label>
+                        <input type="number" id="digit-tp" value="5.00" class="bg-transparent text-xl font-bold outline-none w-full">
+                    </div>
+                    <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                        <label class="text-[9px] text-red-500 font-bold uppercase block mb-2">Stop SL</label>
+                        <input type="number" id="digit-sl" value="10.00" class="bg-transparent text-xl font-bold outline-none w-full">
+                    </div>
+                </div>
+
+                <!-- Botão Salvar -->
+                <button onclick="ui.saveDigitSettings()" class="w-full py-5 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-[0.2em] mt-4 shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
+                    Salvar Dados
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts Externos -->
     <script src="src/deriv_api.js"></script>
