@@ -1,10 +1,11 @@
 const RiskManager = {
     sessionProfit: 0,
     consecutiveLosses: 0,
-    wins: 0,      // Contador de vitórias
-    losses: 0,    // Contador de derrotas
+    wins: 0,      // Contador de vitórias da sessão
+    losses: 0,    // Contador de derrotas da sessão
     isPaused: false,
     pauseTimer: null,
+    currentStake: 0, // Armazena o valor atual (com ou sem Martingale)
 
     // Captura os valores atuais configurados na interface do usuário
     getSettings() {
@@ -20,33 +21,40 @@ const RiskManager = {
     canTrade(analysis) {
         const settings = this.getSettings();
 
-        // 1. Verifica se o robô está ativo na interface
-        if (!ui.isBotRunning) return false;
+        // 1. Verifica se algum dos robôs está ativo (Tendência ou Dígitos)
+        if (!ui.isBotRunning && !ui.isDigitBotRunning) return false;
 
-        // 2. Verifica se o bot está no período de descanso (Filtro Duro pós 2 losses)
+        // 2. Verifica se o bot está no período de descanso (Filtro Duro pós 2 losses no Scalper)
         if (this.isPaused) {
             ui.updateSignal("PAUSADO", 0, "Aguardando recuperação (Filtro Anti-Loss)");
             return false;
         }
 
-        // 3. Verifica se a meta de lucro (Take Profit) foi atingida
+        // 3. Verifica se a meta de lucro (Take Profit) foi atingida na sessão
         if (this.sessionProfit >= settings.tp) {
             ui.addLog(`🎯 META ATINGIDA: +$${this.sessionProfit.toFixed(2)}`, "success");
-            ui.toggleBot(); // Desliga o robô automaticamente
+            if (ui.isBotRunning) ui.toggleBot();
+            if (ui.isDigitBotRunning) ui.toggleDigitBot();
             return false;
         }
 
         // 4. Verifica se o limite de perda (Stop Loss) foi atingido
         if (this.sessionProfit <= (settings.sl * -1)) {
             ui.addLog(`⚠️ STOP LOSS ATINGIDO: $${this.sessionProfit.toFixed(2)}`, "error");
-            ui.toggleBot(); // Desliga o robô automaticamente
+            if (ui.isBotRunning) ui.toggleBot();
+            if (ui.isDigitBotRunning) ui.toggleDigitBot();
             return false;
         }
 
-        // 5. Filtro de Confiança Mínima Baseado na Estratégia Selecionada
-        if (settings.mode === 'Scalper' && analysis.strength < 80) return false;
-        if (settings.mode === 'Caça Ganho' && analysis.strength < 75) return false;
-        if (settings.mode === 'Análise Profunda' && analysis.strength < 90) return false;
+        // 5. Filtro de Confiança Mínima Baseado na Estratégia
+        // Para Dígitos, usamos a confiança vinda do sinal. Para outros, a força da análise.
+        if (ui.currentMode === 'digits') {
+            if (analysis.strength < 80) return false;
+        } else {
+            if (settings.mode === 'Scalper' && analysis.strength < 80) return false;
+            if (settings.mode === 'Caça Ganho' && analysis.strength < 75) return false;
+            if (settings.mode === 'Análise Profunda' && analysis.strength < 90) return false;
+        }
 
         return true;
     },
@@ -58,68 +66,114 @@ const RiskManager = {
         
         // Seleção de fluxo baseada no resultado (Win ou Loss)
         if (profit > 0) {
-            // Caso de Vitória (WIN)
+            // --- CASO DE VITÓRIA (WIN) ---
             this.wins++;
-            this.consecutiveLosses = 0; // Reseta perdas consecutivas
+            this.consecutiveLosses = 0; 
+            
+            // Reseta a Stake para o valor inicial (Fim do ciclo Martingale)
+            this.currentStake = 0; 
+
             ui.addLog(`✅ GANHOU: +$${profit.toFixed(2)} | Total: $${this.sessionProfit.toFixed(2)}`, "success");
         } else {
-            // Caso de Derrota (LOSS)
+            // --- CASO DE DERROTA (LOSS) ---
             this.losses++;
             this.consecutiveLosses++;
+            
             ui.addLog(`❌ PERDEU: $${profit.toFixed(2)} | Total: $${this.sessionProfit.toFixed(2)}`, "error");
 
-            // REGRA RIGOROSA: 2 perdas seguidas no Scalping -> Pausa automática de 2 minutos
-            if (ui.currentStrategy === 'Scalper' && this.consecutiveLosses >= 2) {
+            // REGRA RIGOROSA: 2 perdas seguidas no Scalping -> Pausa automática
+            if (ui.currentStrategy === 'Scalper' && ui.currentMode !== 'digits' && this.consecutiveLosses >= 2) {
                 this.applyPause(2); 
             }
         }
 
-        // Atualiza os contadores Visuais (Placar de Wins/Losses)
-        const winsElement = document.getElementById('stat-wins');
-        const lossesElement = document.getElementById('stat-losses');
-        
-        if (winsElement) winsElement.innerText = this.wins;
-        if (lossesElement) lossesElement.innerText = this.losses;
+        // Atualiza os contadores Visuais (Placar de Wins/Losses e Profit de Dígitos)
+        this.updateUIMetrics();
 
-        // Verificação final de Meta após o processamento do contrato
+        // Verificação final de Meta após o processamento
         const settings = this.getSettings();
         if (this.sessionProfit >= settings.tp) {
             ui.addLog(`🎯 SESSÃO FINALIZADA NO TAKE PROFIT: $${this.sessionProfit.toFixed(2)}`, "success");
             if (ui.isBotRunning) ui.toggleBot();
+            if (ui.isDigitBotRunning) ui.toggleDigitBot();
         } else if (this.sessionProfit <= (settings.sl * -1)) {
             ui.addLog(`⚠️ SESSÃO FINALIZADA NO STOP LOSS: $${this.sessionProfit.toFixed(2)}`, "error");
             if (ui.isBotRunning) ui.toggleBot();
+            if (ui.isDigitBotRunning) ui.toggleDigitBot();
         }
     },
 
-    // APLICA PAUSA FORÇADA PARA EVITAR QUEBRA DE BANCA EM CICLOS RUINS
+    // 📈 CÁLCULO DE MARTINGALE DINÂMICO (Estilo Placa Curiosa)
+    // Calcula quanto deve ser a próxima entrada para recuperar e lucrar
+    getNextStake(contractType) {
+        const settings = this.getSettings();
+        
+        // Se não houver perdas acumuladas, usa a stake padrão
+        if (this.consecutiveLosses === 0) {
+            this.currentStake = settings.stake;
+            return this.currentStake;
+        }
+
+        // Multiplicadores baseados na probabilidade (Payout)
+        // No "Under 7", o prêmio é menor, então o multiplicador é maior para recuperar
+        let multiplier = 2.1; // Padrão para Call/Put (Payout ~95%)
+
+        if (contractType) {
+            if (contractType.includes('DIGITUNDER') || contractType.includes('DIGITOVER')) {
+                multiplier = 3.55; // Payout ~39% (Exemplo das fotos)
+            } else if (contractType.includes('DIGITDIFF')) {
+                multiplier = 11.0; // Payout ~10% (Differ)
+            }
+        }
+
+        // Calcula a nova stake baseada na última stake usada
+        this.currentStake = parseFloat((this.currentStake * multiplier).toFixed(2));
+        return this.currentStake;
+    },
+
+    // Atualiza todos os elementos de texto de lucro/placar na interface
+    updateUIMetrics() {
+        // Placar Bot de Tendência
+        const winsTrend = document.getElementById('stat-wins');
+        const lossesTrend = document.getElementById('stat-losses');
+        if (winsTrend) winsTrend.innerText = this.wins;
+        if (lossesTrend) lossesTrend.innerText = this.losses;
+
+        // Placar Bot de Dígitos
+        const profitDigit = document.getElementById('digit-profit-display');
+        if (profitDigit) {
+            profitDigit.innerText = `$ ${this.sessionProfit.toFixed(2)}`;
+            profitDigit.className = `text-xl font-black leading-tight ${this.sessionProfit >= 0 ? 'text-green-500' : 'text-red-500'}`;
+        }
+    },
+
+    // APLICA PAUSA FORÇADA PARA EVITAR QUEBRA DE BANCA
     applyPause(minutes) {
         this.isPaused = true;
-        ui.addLog(`🚫 FILTRO DURO: 2 perdas seguidas no Scalper. Pausando por ${minutes}min.`, "warn");
+        ui.addLog(`🚫 FILTRO DURO: 2 perdas seguidas. Pausando por ${minutes}min.`, "warn");
         
-        // Limpa qualquer timer anterior caso exista
         if (this.pauseTimer) clearTimeout(this.pauseTimer);
         
-        // Inicia o contador de tempo para retomar as operações
         this.pauseTimer = setTimeout(() => {
             this.isPaused = false;
             this.consecutiveLosses = 0;
-            ui.addLog("🔄 Tempo de recuperação finalizado. Motor pronto para retomar.", "info");
+            ui.addLog("🔄 Tempo de recuperação finalizado. Retomando motor.", "info");
         }, minutes * 60 * 1000);
     },
 
-    // FUNÇÃO DE RESET COMPLETO DA SESSÃO (CHAMADA PELO UI_CONTROLLER)
+    // FUNÇÃO DE RESET COMPLETO DA SESSÃO
     resetSessao() {
         this.sessionProfit = 0;
         this.consecutiveLosses = 0;
         this.wins = 0;
         this.losses = 0;
         this.isPaused = false;
+        this.currentStake = 0;
         
-        // Cancela qualquer pausa de tempo que estiver rodando
         if (this.pauseTimer) {
             clearTimeout(this.pauseTimer);
             this.pauseTimer = null;
         }
+        this.updateUIMetrics();
     }
 };
