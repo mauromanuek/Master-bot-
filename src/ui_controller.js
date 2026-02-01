@@ -1,24 +1,27 @@
 const ui = {
     currentStrategy: 'Scalper',
-    selectedDigitStrategy: 'Coringa Cash', // Estratégia padrão para dígitos
+    selectedDigitStrategy: 'Coringa Cash', // Estratégia ativa para o robô de dígitos
     currentMode: 'analysis',
     isBotRunning: false,
     isDigitBotRunning: false,
     isAnalysisRunning: false,
 
-    // 1. GESTÃO DE ACESSO
+    // 1. GESTÃO DE ACESSO PÓS-LOGIN
     onLoginSuccess() {
         document.getElementById('view-login').style.display = 'none';
         document.getElementById('main-header').style.display = 'flex';
         document.getElementById('main-content').style.display = 'block';
         document.getElementById('main-footer').style.display = 'grid';
+        
+        // Inicializa o esqueleto do gráfico de barras de dígitos
         this.initDigitGraph();
     },
 
-    // 2. CONTROLE DO RADAR (ANÁLISE MANUAL)
+    // 2. CONTROLE DO RADAR (ANÁLISE MANUAL DE TENDÊNCIA)
     toggleAnalysis() {
         this.isAnalysisRunning = !this.isAnalysisRunning;
         const btn = document.getElementById('btn-analysis-control');
+        
         if (this.isAnalysisRunning) {
             btn.innerText = "Desligar Radar";
             btn.classList.replace('bg-blue-600', 'bg-red-600');
@@ -30,27 +33,29 @@ const ui = {
         }
     },
 
-    // 3. CONTROLE DO ROBÔ (OPERAÇÃO TENDÊNCIA)
+    // 3. CONTROLE DO ROBÔ (OPERAÇÃO AUTOMÁTICA DE TENDÊNCIA)
     toggleBot() {
         this.isBotRunning = !this.isBotRunning;
         const btn = document.getElementById('btn-bot');
+        
         if (this.isBotRunning) {
             btn.innerText = "Parar Operação";
             btn.style.backgroundColor = "#ef4444";
             btn.style.color = "#fff";
-            this.addLog(`🚀 Robô Iniciado: ${this.currentStrategy}`, "success");
+            this.addLog(`🚀 Robô Trend Iniciado: ${this.currentStrategy}`, "success");
         } else {
             btn.innerText = "Iniciar Operação";
             btn.style.backgroundColor = "#fcd535";
             btn.style.color = "#000";
-            this.addLog("🛑 Operação interrompida.", "warn");
+            this.addLog("🛑 Operação de tendência interrompida.", "warn");
         }
     },
 
-    // 4. CONTROLE DO ROBÔ (DÍGITOS)
+    // 4. CONTROLE DO ROBÔ DE DÍGITOS (PROBABILIDADE / EDGE ESTATÍSTICO)
     toggleDigitBot() {
         this.isDigitBotRunning = !this.isDigitBotRunning;
         const btn = document.getElementById('btn-digit-bot');
+        
         if (this.isDigitBotRunning) {
             btn.innerText = "PARAR OPERAÇÃO";
             btn.classList.replace('bg-green-600', 'bg-red-600');
@@ -58,11 +63,11 @@ const ui = {
         } else {
             btn.innerText = "ANALISAR & OPERAR";
             btn.classList.replace('bg-red-600', 'bg-green-600');
-            this.addLog("🛑 Bot de Dígitos Desativado.", "warn");
+            this.addLog("🛑 Bot de Dígitos interrompido.", "warn");
         }
     },
 
-    // 5. MODAL DE DEFINIÇÕES
+    // 5. GESTÃO DO MODAL DE DEFINIÇÕES (ESTILO LUXO)
     toggleDigitSettings() {
         const modal = document.getElementById('digit-settings-modal');
         if (modal.classList.contains('hidden')) {
@@ -75,19 +80,23 @@ const ui = {
     },
 
     saveDigitSettings() {
-        // Captura a estratégia selecionada no Select
-        this.selectedDigitStrategy = document.getElementById('select-digit-strategy').value;
+        // Captura a estratégia escolhida pelo usuário no Modal
+        const strategySelect = document.getElementById('select-digit-strategy');
+        this.selectedDigitStrategy = strategySelect.value;
         
-        // Sincroniza valores visuais da tela de Bot Principal com os inputs do Modal
+        // Sincroniza os inputs globais (Stake/TP/SL) para o RiskManager usar
         document.getElementById('inp-stake').value = document.getElementById('digit-stake').value;
         document.getElementById('inp-tp').value = document.getElementById('digit-tp').value;
         document.getElementById('inp-sl').value = document.getElementById('digit-sl').value;
 
-        this.addLog(`Configurações Aplicadas: ${this.selectedDigitStrategy}`, "warn");
+        // Feedback visual no Log
+        this.addLog(`Configurações de Dígitos Salvas: ${this.selectedDigitStrategy}`, "warn");
+        
+        // Fecha o modal após salvar
         this.toggleDigitSettings();
     },
 
-    // 6. GESTÃO DE ESTRATÉGIAS SUPERIOR
+    // 6. GESTÃO DE ESTRATÉGIAS DO HEADER
     toggleAnalysisMenu(e) {
         if (e) e.stopPropagation();
         document.getElementById('analysis-menu').classList.toggle('show');
@@ -101,18 +110,20 @@ const ui = {
     setStrategy(name) {
         this.currentStrategy = name;
         document.getElementById('selected-analysis-name').innerText = name;
-        this.addLog(`Estratégia Trend: ${name.toUpperCase()}`, "info");
+        this.addLog(`Estratégia Trend alterada para: ${name.toUpperCase()}`, "info");
         this.closeAllMenus();
+        
         if (this.isAnalysisRunning) {
-            this.updateSignal("SINTONIZANDO...", 20, `Ajustando para ${name}`);
+            this.updateSignal("SINTONIZANDO...", 20, `Ajustando motor para ${name}`);
         }
     },
 
-    // 7. ATUALIZAÇÃO DA INTERFACE SINAIS
+    // 7. ATUALIZAÇÃO DA INTERFACE DE SINAIS (RADAR)
     updateSignal(signal, strength, reason) {
         const disp = document.getElementById('signal-display');
         const desc = document.getElementById('strategy-desc');
         const bar = document.getElementById('signal-strength');
+
         if (!disp || !desc || !bar) return;
 
         disp.innerText = signal;
@@ -131,10 +142,11 @@ const ui = {
         }
     },
 
-    // 8. MOTOR VISUAL DÍGITOS
+    // 8. MOTOR VISUAL DE DÍGITOS (GRÁFICO DE BARRAS)
     initDigitGraph() {
         const graph = document.getElementById('digit-graph');
         if (!graph || graph.children.length > 0) return;
+
         for (let i = 0; i < 10; i++) {
             graph.innerHTML += `
                 <div class="flex-1 flex flex-col items-center gap-1">
@@ -148,12 +160,16 @@ const ui = {
     updateDigitUI(last, stats) {
         const view = document.getElementById('current-digit-view');
         if (view) view.innerText = last;
+
         stats.forEach((perc, i) => {
             const bar = document.getElementById(`d-bar-${i}`);
             const txt = document.getElementById(`d-perc-${i}`);
             if (bar && txt) {
+                // Escala visual de altura baseada na porcentagem (perc * 3 para melhor visibilidade)
                 bar.style.height = `${Math.max(perc * 3, 5)}%`;
                 txt.innerText = `${perc}%`;
+
+                // Cores dinâmicas (Estilo Placa Curiosa): Verde (>18%), Vermelho (<5%)
                 if (perc >= 18) bar.style.backgroundColor = '#22c55e';
                 else if (perc <= 5) bar.style.backgroundColor = '#ef4444';
                 else bar.style.backgroundColor = '#374151';
@@ -161,31 +177,42 @@ const ui = {
         });
     },
 
-    // 9. TABELA DE HISTÓRICO "TRADER"
+    // 9. TABELA DE HISTÓRICO "TRADER" (DÍGITOS)
     addDigitHistoryRow(contract) {
         const list = document.getElementById('digit-history-list');
         if (!list) return;
+
         const row = document.createElement('tr');
         row.className = "border-b border-gray-800/50 bg-black/5";
+        
         const profit = parseFloat(contract.profit);
         const colorClass = profit >= 0 ? 'text-green-500' : 'text-red-500';
         const sign = profit >= 0 ? '+' : '';
+
         row.innerHTML = `
             <td class="p-4 text-white uppercase font-bold">${contract.contract_type}</td>
             <td class="p-4 text-gray-400">${contract.exit_tick}</td>
             <td class="p-4 text-gray-300">$ ${contract.buy_price.toFixed(2)}</td>
             <td class="p-4 text-right ${colorClass} font-bold">${sign}${profit.toFixed(2)}</td>`;
+
         list.insertBefore(row, list.firstChild);
-        if (list.childNodes.length > 10) list.removeChild(list.lastChild);
+
+        // Mantém apenas os últimos 10 trades na tabela visual
+        if (list.childNodes.length > 10) {
+            list.removeChild(list.lastChild);
+        }
     },
 
-    // 10. NAVEGAÇÃO E LOGS
+    // 10. NAVEGAÇÃO ENTRE ABAS E GESTÃO DE LOGS
     switchMode(mode) {
         this.currentMode = mode;
         document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
         document.getElementById(`mode-${mode}`).classList.add('active');
+        
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(`tab-${mode}`).classList.add('active');
+
+        // REGRA DE OURO: Esconde o seletor de estratégia superior se estiver na aba de Dígitos
         const strategyBtn = document.getElementById('btn-strategy');
         if (mode === 'digits') {
             strategyBtn.style.visibility = 'hidden';
@@ -198,36 +225,66 @@ const ui = {
     addLog(msg, type = "info") {
         const logWin = document.getElementById('log-window');
         if (!logWin) return;
+
         const now = new Date().toLocaleTimeString();
         const logEntry = document.createElement('div');
         logEntry.className = 'log-entry';
+        
         let colorClass = 'text-blue-400';
         if (type === 'success') colorClass = 'text-green-500 font-bold';
         if (type === 'warn') colorClass = 'text-yellow-500';
         if (type === 'error') colorClass = 'text-red-500 font-bold';
-        logEntry.innerHTML = `<span class="text-gray-600 mr-2">[${now}]</span><span class="${colorClass}">${msg}</span>`;
+
+        logEntry.innerHTML = `
+            <span class="text-gray-600 mr-2">[${now}]</span>
+            <span class="${colorClass}">${msg}</span>
+        `;
+
         logWin.appendChild(logEntry);
         logWin.scrollTop = logWin.scrollHeight;
+
+        if (logWin.childNodes.length > 50) {
+            logWin.removeChild(logWin.firstChild);
+        }
     },
 
     clearTerminal() {
+        // Bloqueia o reset se qualquer robô estiver em operação
         if (this.isBotRunning || this.isDigitBotRunning) {
-            alert("Pare o robô antes de resetar!");
+            alert("Atenção: Pare o robô antes de resetar as estatísticas da sessão!");
             return;
         }
-        if (confirm("Resetar todos os dados da sessão?")) {
-            if (typeof RiskManager !== 'undefined') RiskManager.resetSessao();
+
+        if (confirm("Deseja zerar todos os logs, contadores de Win/Loss e histórico de trades da sessão?")) {
+            // Reseta a lógica interna no Gerenciador de Risco
+            if (typeof RiskManager !== 'undefined') {
+                RiskManager.resetSessao();
+            }
+
+            // Limpa o visual do Log
             const logWindow = document.getElementById('log-window');
-            if (logWindow) logWindow.innerHTML = '<div class="log-entry text-gray-500 italic">> Sessão reiniciada.</div>';
+            if (logWindow) {
+                logWindow.innerHTML = '<div class="log-entry text-gray-500 italic">> Sessão reiniciada. Terminal limpo.</div>';
+            }
+
+            // Limpa a Tabela de Trades
             const historyList = document.getElementById('digit-history-list');
-            if (historyList) historyList.innerHTML = '';
+            if (historyList) {
+                historyList.innerHTML = '';
+            }
+
+            // Reseta o placar de saldo/lucro de dígitos na tela
+            document.getElementById('digit-profit-display').innerText = '$ 0.00';
+            document.getElementById('digit-profit-display').className = 'text-xl font-black text-gray-400';
             document.getElementById('stat-wins').innerText = '0';
             document.getElementById('stat-losses').innerText = '0';
-            this.addLog("Terminal Resetado.", "warn");
+            
+            this.addLog("As estatísticas da sessão foram redefinidas.", "warn");
         }
     }
 };
 
+// Listener global para fechar menus ao clicar fora do botão de estratégia
 document.addEventListener('click', (event) => {
     const strategyBtn = document.getElementById('btn-strategy');
     const analysisMenu = document.getElementById('analysis-menu');
