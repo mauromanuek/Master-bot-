@@ -103,7 +103,7 @@ const RiskManager = {
         }
     },
 
-    // 📈 CÁLCULO DE MARTINGALE DINÂMICO (Estilo Placa Curiosa)
+    // 📈 CÁLCULO DE MARTINGALE DINÂMICO (PROFISSIONAL)
     // Calcula quanto deve ser a próxima entrada para recuperar e lucrar
     getNextStake(contractType) {
         const settings = this.getSettings();
@@ -114,19 +114,24 @@ const RiskManager = {
             return this.currentStake;
         }
 
-        // Multiplicadores baseados na probabilidade (Payout)
-        // No "Under 7", o prêmio é menor, então o multiplicador é maior para recuperar
-        let multiplier = 2.1; // Padrão para Call/Put (Payout ~95%)
+        // --- MULTIPLICADORES INTELIGENTES ---
+        let multiplier = 2.1; 
 
-        if (contractType) {
-            if (contractType.includes('DIGITUNDER') || contractType.includes('DIGITOVER')) {
-                multiplier = 3.55; // Payout ~39% (Exemplo das fotos)
-            } else if (contractType.includes('DIGITDIFF')) {
-                multiplier = 11.0; // Payout ~10% (Differ)
+        // Se estiver operando DÍGITOS, o multiplicador muda conforme a estratégia escolhida
+        if (ui.currentMode === 'digits') {
+            if (ui.selectedDigitStrategy === 'Coringa Cash') {
+                // Como o lucro é de ~31%, o multiplicador precisa ser maior (3.55x) para recuperar o anterior
+                multiplier = 3.55;
+            } else if (ui.selectedDigitStrategy === 'Equilíbrio de Ouro') {
+                // Como o lucro é de ~95% (quase o dobro), um multiplicador baixo (2.1x) já resolve
+                multiplier = 2.1;
             }
+        } else {
+            // Para modos de tendência (Scalper, etc) que pagam cerca de 95%
+            multiplier = 2.1;
         }
 
-        // Calcula a nova stake baseada na última stake usada
+        // Calcula a nova stake baseada na última stake usada no ciclo
         this.currentStake = parseFloat((this.currentStake * multiplier).toFixed(2));
         return this.currentStake;
     },
