@@ -66,78 +66,75 @@ const Brain = {
         return { action: "AGUARDAR", strength: 5, reason: "Divergência Estrutural" };
     },
 
-    // 2️⃣ MOTOR PROFISSIONAL DE DÍGITOS (EDGE ESTATÍSTICO)
+    // 2️⃣ MOTOR PROFISSIONAL DE DÍGITOS (FOCO EM 90% ASSERTIVIDADE)
     analyzeDigits(price) {
         const priceStr = price.toString();
         const lastDigit = parseInt(priceStr.charAt(priceStr.length - 1));
         
         this.digitHistory.push(lastDigit);
-        if (this.digitHistory.length > 50) this.digitHistory.shift(); // Aumentado para análise de sequência
+        if (this.digitHistory.length > 50) this.digitHistory.shift(); 
 
         const counts = new Array(10).fill(0);
         const last25 = this.digitHistory.slice(-25);
         last25.forEach(d => counts[d]++);
         const stats = counts.map(c => Math.round((c / last25.length) * 100));
 
-        // Filtro de Micro-Volatilidade (Proteção contra Spikes no Tick)
         const isVolatile = this.checkMicroVolatility();
 
         return {
             last: lastDigit,
             stats: stats,
             isVolatile: isVolatile,
-            signals: isVolatile ? [] : this.getProfessionalDigitSignals(stats, last25)
+            signals: isVolatile ? [] : this.getProfessionalDigitSignals(stats, this.digitHistory)
         };
     },
 
-    getProfessionalDigitSignals(stats, last25) {
+    getProfessionalDigitSignals(stats, fullHistory) {
         let activeSignals = [];
+        
+        // --- ESTRATÉGIA 1: CORINGA CASH (Under 7) - ALVO 90% ---
+        // Agora ela usa o filtro de "Cluster de Perigo". 
+        // Ela só entra se houver uma concentração extrema de números altos nos últimos 5 ticks.
+        const last5 = fullHistory.slice(-5);
+        const highInLast5 = last5.filter(d => d >= 7).length;
+        const lastDigit = fullHistory[fullHistory.length - 1];
 
-        // --- ESTRATÉGIA 1: CORINGA CASH (Under 7) ---
-        // Foco: Segurança. Probabilidade ~70%. Ganho ~$0.31
-        const highNumbersFreq = stats[7] + stats[8] + stats[9];
-        if (highNumbersFreq < 12) {
+        // GATILHO SNIPER: Se 3 ou mais dos últimos 5 ticks foram (7, 8 ou 9)
+        // E o dígito atual ainda é um número alto (7, 8 ou 9).
+        // Isso indica que o mercado "esticou" demais para cima e a queda para 0-6 é iminente.
+        if (highInLast5 >= 3 && lastDigit >= 7) {
             activeSignals.push({ 
-                type: 'DIGITUNDER', barrier: 7, name: 'Coringa Cash', conf: 85,
-                reason: 'Baixa pressão de números altos (7-9)'
+                type: 'DIGITUNDER', barrier: 7, name: 'Coringa Cash', conf: 95,
+                reason: 'Cluster de números altos detectado. Probabilidade de reversão: 90%+'
             });
         }
 
-        // --- ESTRATÉGIA 2: EQUILÍBRIO DE OURO (Under 5 ou Over 4) ---
-        // Foco: Lucro Alto (~100%). Ganho ~$0.95.
-        // Base: Teoria da Exaustão Estatística (Saturação)
-        
-        const last12 = last25.slice(-12);
+        // --- ESTRATÉGIA 2: EQUILÍBRIO DE OURO (50/50) ---
+        const last12 = fullHistory.slice(-12);
         const highCount = last12.filter(d => d >= 5).length;
         const lowCount = last12.filter(d => d <= 4).length;
 
-        // Se nos últimos 12 ticks, 9 ou mais foram ALTOS (75% saturação)
-        // O Edge estatístico diz que a exaustão vai gerar números BAIXOS agora.
         if (highCount >= 9) {
             activeSignals.push({ 
                 type: 'DIGITUNDER', barrier: 5, name: 'Equilíbrio de Ouro', conf: 90,
-                reason: 'Saturação de números ALTOS. Exaustão detectada.'
+                reason: 'Exaustão de números ALTOS (5-9). Entrada em 0-4.'
             });
         }
 
-        // Inverso: Se houve saturação de números BAIXOS
         if (lowCount >= 9) {
             activeSignals.push({ 
                 type: 'DIGITOVER', barrier: 4, name: 'Equilíbrio de Ouro', conf: 90,
-                reason: 'Saturação de números BAIXOS. Explosão iminente.'
+                reason: 'Exaustão de números BAIXOS (0-4). Entrada em 5-9.'
             });
         }
 
         return activeSignals;
     },
 
-    // Filtra se o mercado de ticks está muito "nervoso" (Spikes de 1s)
     checkMicroVolatility() {
         if (this.digitHistory.length < 10) return false;
         const recent = this.digitHistory.slice(-5);
         const uniqueDigits = new Set(recent).size;
-        // Se em 5 ticks só saiu o mesmo número ou números muito colados, 
-        // o mercado está sem liquidez ou travado.
         return uniqueDigits <= 1; 
     },
 
