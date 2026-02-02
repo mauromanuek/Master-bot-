@@ -1,6 +1,8 @@
 const Brain = {
     // Memória para análise de dígitos
     digitHistory: [],
+    statusMessage: "Iniciando motores de análise...",
+    lastStatusUpdate: 0,
 
     // 1️⃣ ANALISADOR DE TENDÊNCIA (MODOS ORIGINAIS - MANTIDOS)
     analyze(ticks, mode) {
@@ -80,55 +82,89 @@ const Brain = {
         const stats = counts.map(c => Math.round((c / last25.length) * 100));
 
         const isVolatile = this.checkMicroVolatility();
+        const signals = isVolatile ? [] : this.getProfessionalDigitSignals(stats, this.digitHistory);
+
+        // Gerencia mensagens de status para UI a cada 10s
+        const now = Date.now();
+        if (now - this.lastStatusUpdate > 10000) {
+            this.updateStatusMessage(signals);
+            this.lastStatusUpdate = now;
+        }
 
         return {
             last: lastDigit,
             stats: stats,
             isVolatile: isVolatile,
-            signals: isVolatile ? [] : this.getProfessionalDigitSignals(stats, this.digitHistory)
+            signals: signals
         };
     },
 
     getProfessionalDigitSignals(stats, fullHistory) {
         let activeSignals = [];
-        
-        // --- ESTRATÉGIA 1: CORINGA CASH (Under 7) - ALVO 90% ---
-        // Agora ela usa o filtro de "Cluster de Perigo". 
-        // Ela só entra se houver uma concentração extrema de números altos nos últimos 5 ticks.
-        const last5 = fullHistory.slice(-5);
-        const highInLast5 = last5.filter(d => d >= 7).length;
         const lastDigit = fullHistory[fullHistory.length - 1];
+        const prevDigit = fullHistory[fullHistory.length - 2];
+        const last5 = fullHistory.slice(-5);
+        const last12 = fullHistory.slice(-12);
+        const last5Sum = last5.reduce((a, b) => a + b, 0);
 
-        // GATILHO SNIPER: Se 3 ou mais dos últimos 5 ticks foram (7, 8 ou 9)
-        // E o dígito atual ainda é um número alto (7, 8 ou 9).
-        // Isso indica que o mercado "esticou" demais para cima e a queda para 0-6 é iminente.
+        // FILTRO ANTI-REPETIÇÃO: Evita padrões fixos da corretora
+        if (lastDigit === prevDigit) return [];
+
+        // --- ESTRATÉGIA NOVO: SNIPER 30% (Under 3: 0, 1, 2) ---
+        // Filtro de Seca Absoluta: 0, 1, 2 não aparecem há 12 ticks
+        const lowDrought = last12.filter(d => d < 3).length === 0;
+        // Filtro de Soma: Tendência de queda nos números altos
+        const isSumDropping = last5Sum < 30; 
+        // Filtro Perda Virtual: O último precisa ter sido um "erro" (>= 3) para entrar na reversão
+        const isVirtualLoss = lastDigit >= 3;
+
+        if (lowDrought && isSumDropping && isVirtualLoss) {
+            activeSignals.push({
+                type: 'DIGITUNDER', barrier: 3, name: 'Sniper 30%', conf: 98,
+                reason: 'Seca absoluta de 0-2 detectada. Probabilidade de reversão máxima.'
+            });
+        }
+
+        // --- ESTRATÉGIA 1: CORINGA CASH (Under 7) ---
+        const highInLast5 = last5.filter(d => d >= 7).length;
         if (highInLast5 >= 3 && lastDigit >= 7) {
             activeSignals.push({ 
                 type: 'DIGITUNDER', barrier: 7, name: 'Coringa Cash', conf: 95,
-                reason: 'Cluster de números altos detectado. Probabilidade de reversão: 90%+'
+                reason: 'Cluster de números altos (7-9). Gatilho Under 7 ativado.'
             });
         }
 
         // --- ESTRATÉGIA 2: EQUILÍBRIO DE OURO (50/50) ---
-        const last12 = fullHistory.slice(-12);
-        const highCount = last12.filter(d => d >= 5).length;
-        const lowCount = last12.filter(d => d <= 4).length;
+        const highCount12 = last12.filter(d => d >= 5).length;
+        const lowCount12 = last12.filter(d => d <= 4).length;
 
-        if (highCount >= 9) {
+        if (highCount12 >= 10 && lastDigit >= 5) { // Espera exaustão extrema + perda virtual
             activeSignals.push({ 
-                type: 'DIGITUNDER', barrier: 5, name: 'Equilíbrio de Ouro', conf: 90,
-                reason: 'Exaustão de números ALTOS (5-9). Entrada em 0-4.'
+                type: 'DIGITUNDER', barrier: 5, name: 'Equilíbrio de Ouro', conf: 92,
+                reason: 'Exaustão 50/50: Sequência de ALTOS. Entrando em BAIXOS.'
             });
         }
 
-        if (lowCount >= 9) {
+        if (lowCount12 >= 10 && lastDigit <= 4) {
             activeSignals.push({ 
-                type: 'DIGITOVER', barrier: 4, name: 'Equilíbrio de Ouro', conf: 90,
-                reason: 'Exaustão de números BAIXOS (0-4). Entrada em 5-9.'
+                type: 'DIGITOVER', barrier: 4, name: 'Equilíbrio de Ouro', conf: 92,
+                reason: 'Exaustão 50/50: Sequência de BAIXOS. Entrando em ALTOS.'
             });
         }
 
         return activeSignals;
+    },
+
+    updateStatusMessage(signals) {
+        if (signals.length > 0) {
+            this.statusMessage = `🎯 Oportunidade: ${signals[0].name} detectada!`;
+        } else {
+            const last12 = this.digitHistory.slice(-12);
+            const drought = last12.filter(d => d < 3).length;
+            this.statusMessage = drought === 0 
+                ? "🔍 Sniper: Seca de 0-2 atingiu nível crítico. Aguardando gatilho..."
+                : "📡 Radar: Analisando padrões e filtrando ruídos do mercado...";
+        }
     },
 
     checkMicroVolatility() {
