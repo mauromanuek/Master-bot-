@@ -1,10 +1,12 @@
 const ui = {
     currentStrategy: 'Scalper',
-    selectedDigitStrategy: 'Coringa Cash', // Estratégia ativa para o robô de dígitos
+    selectedDigitStrategy: 'Coringa Cash', 
     currentMode: 'analysis',
     isBotRunning: false,
     isDigitBotRunning: false,
     isAnalysisRunning: false,
+    wakeLock: null,
+    statusInterval: null,
 
     // 1. GESTÃO DE ACESSO PÓS-LOGIN
     onLoginSuccess() {
@@ -15,6 +17,9 @@ const ui = {
         
         // Inicializa o esqueleto do gráfico de barras de dígitos
         this.initDigitGraph();
+        // Ativa a proteção de tela e o ticker de status
+        this.requestWakeLock();
+        this.startStatusTicker();
     },
 
     // 2. CONTROLE DO RADAR (ANÁLISE MANUAL DE TENDÊNCIA)
@@ -60,6 +65,7 @@ const ui = {
             btn.innerText = "PARAR OPERAÇÃO";
             btn.classList.replace('bg-green-600', 'bg-red-600');
             this.addLog(`🎲 Bot de Dígitos Ativo: ${this.selectedDigitStrategy}`, "success");
+            this.showNotification(`Operação Iniciada: ${this.selectedDigitStrategy}`);
         } else {
             btn.innerText = "ANALISAR & OPERAR";
             btn.classList.replace('bg-red-600', 'bg-green-600');
@@ -80,19 +86,14 @@ const ui = {
     },
 
     saveDigitSettings() {
-        // Captura a estratégia escolhida pelo usuário no Modal
         const strategySelect = document.getElementById('select-digit-strategy');
         this.selectedDigitStrategy = strategySelect.value;
         
-        // Sincroniza os inputs globais (Stake/TP/SL) para o RiskManager usar
         document.getElementById('inp-stake').value = document.getElementById('digit-stake').value;
         document.getElementById('inp-tp').value = document.getElementById('digit-tp').value;
         document.getElementById('inp-sl').value = document.getElementById('digit-sl').value;
 
-        // Feedback visual no Log
         this.addLog(`Configurações de Dígitos Salvas: ${this.selectedDigitStrategy}`, "warn");
-        
-        // Fecha o modal após salvar
         this.toggleDigitSettings();
     },
 
@@ -165,11 +166,8 @@ const ui = {
             const bar = document.getElementById(`d-bar-${i}`);
             const txt = document.getElementById(`d-perc-${i}`);
             if (bar && txt) {
-                // Escala visual de altura baseada na porcentagem (perc * 3 para melhor visibilidade)
                 bar.style.height = `${Math.max(perc * 3, 5)}%`;
                 txt.innerText = `${perc}%`;
-
-                // Cores dinâmicas (Estilo Placa Curiosa): Verde (>18%), Vermelho (<5%)
                 if (perc >= 18) bar.style.backgroundColor = '#22c55e';
                 else if (perc <= 5) bar.style.backgroundColor = '#ef4444';
                 else bar.style.backgroundColor = '#374151';
@@ -184,7 +182,6 @@ const ui = {
 
         const row = document.createElement('tr');
         row.className = "border-b border-gray-800/50 bg-black/5";
-        
         const profit = parseFloat(contract.profit);
         const colorClass = profit >= 0 ? 'text-green-500' : 'text-red-500';
         const sign = profit >= 0 ? '+' : '';
@@ -196,11 +193,7 @@ const ui = {
             <td class="p-4 text-right ${colorClass} font-bold">${sign}${profit.toFixed(2)}</td>`;
 
         list.insertBefore(row, list.firstChild);
-
-        // Mantém apenas os últimos 10 trades na tabela visual
-        if (list.childNodes.length > 10) {
-            list.removeChild(list.lastChild);
-        }
+        if (list.childNodes.length > 10) list.removeChild(list.lastChild);
     },
 
     // 10. NAVEGAÇÃO ENTRE ABAS E GESTÃO DE LOGS
@@ -208,11 +201,9 @@ const ui = {
         this.currentMode = mode;
         document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
         document.getElementById(`mode-${mode}`).classList.add('active');
-        
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(`tab-${mode}`).classList.add('active');
 
-        // REGRA DE OURO: Esconde o seletor de estratégia superior se estiver na aba de Dígitos
         const strategyBtn = document.getElementById('btn-strategy');
         if (mode === 'digits') {
             strategyBtn.style.visibility = 'hidden';
@@ -225,66 +216,79 @@ const ui = {
     addLog(msg, type = "info") {
         const logWin = document.getElementById('log-window');
         if (!logWin) return;
-
         const now = new Date().toLocaleTimeString();
         const logEntry = document.createElement('div');
         logEntry.className = 'log-entry';
-        
         let colorClass = 'text-blue-400';
         if (type === 'success') colorClass = 'text-green-500 font-bold';
         if (type === 'warn') colorClass = 'text-yellow-500';
         if (type === 'error') colorClass = 'text-red-500 font-bold';
 
-        logEntry.innerHTML = `
-            <span class="text-gray-600 mr-2">[${now}]</span>
-            <span class="${colorClass}">${msg}</span>
-        `;
-
+        logEntry.innerHTML = `<span class="text-gray-600 mr-2">[${now}]</span><span class="${colorClass}">${msg}</span>`;
         logWin.appendChild(logEntry);
         logWin.scrollTop = logWin.scrollHeight;
+        if (logWin.childNodes.length > 50) logWin.removeChild(logWin.firstChild);
+    },
 
-        if (logWin.childNodes.length > 50) {
-            logWin.removeChild(logWin.firstChild);
+    // 🚀 NOVAS FUNCIONALIDADES: Wake Lock e Notificações de Status
+    async requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                this.wakeLock = await navigator.wakeLock.request('screen');
+                this.addLog("🛡️ Bloqueio de suspensão ativo: A tela não irá desligar.", "info");
+            }
+        } catch (err) {
+            console.warn("Wake Lock não suportado ou erro ao ativar.");
         }
     },
 
+    startStatusTicker() {
+        if (this.statusInterval) clearInterval(this.statusInterval);
+        this.statusInterval = setInterval(() => {
+            if (typeof Brain !== 'undefined' && (this.isBotRunning || this.isDigitBotRunning || this.isAnalysisRunning)) {
+                this.showNotification(Brain.statusMessage);
+            }
+        }, 10000);
+    },
+
+    showNotification(msg) {
+        let toast = document.getElementById('ui-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'ui-toast';
+            toast.className = 'fixed top-24 left-1/2 -translate-x-1/2 z-[500] bg-yellow-500 text-black px-6 py-2 rounded-full font-bold text-[10px] uppercase tracking-widest shadow-2xl transition-all duration-500 opacity-0 pointer-events-none text-center';
+            document.body.appendChild(toast);
+        }
+        toast.innerText = msg;
+        toast.style.opacity = '1';
+        toast.style.transform = 'translate(-50%, 0px)';
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translate(-50%, -20px)';
+        }, 4000);
+    },
+
     clearTerminal() {
-        // Bloqueia o reset se qualquer robô estiver em operação
         if (this.isBotRunning || this.isDigitBotRunning) {
             alert("Atenção: Pare o robô antes de resetar as estatísticas da sessão!");
             return;
         }
 
         if (confirm("Deseja zerar todos os logs, contadores de Win/Loss e histórico de trades da sessão?")) {
-            // Reseta a lógica interna no Gerenciador de Risco
-            if (typeof RiskManager !== 'undefined') {
-                RiskManager.resetSessao();
-            }
-
-            // Limpa o visual do Log
+            if (typeof RiskManager !== 'undefined') RiskManager.resetSessao();
             const logWindow = document.getElementById('log-window');
-            if (logWindow) {
-                logWindow.innerHTML = '<div class="log-entry text-gray-500 italic">> Sessão reiniciada. Terminal limpo.</div>';
-            }
-
-            // Limpa a Tabela de Trades
+            if (logWindow) logWindow.innerHTML = '<div class="log-entry text-gray-500 italic">> Sessão reiniciada. Terminal limpo.</div>';
             const historyList = document.getElementById('digit-history-list');
-            if (historyList) {
-                historyList.innerHTML = '';
-            }
-
-            // Reseta o placar de saldo/lucro de dígitos na tela
+            if (historyList) historyList.innerHTML = '';
             document.getElementById('digit-profit-display').innerText = '$ 0.00';
             document.getElementById('digit-profit-display').className = 'text-xl font-black text-gray-400';
             document.getElementById('stat-wins').innerText = '0';
             document.getElementById('stat-losses').innerText = '0';
-            
             this.addLog("As estatísticas da sessão foram redefinidas.", "warn");
         }
     }
 };
 
-// Listener global para fechar menus ao clicar fora do botão de estratégia
 document.addEventListener('click', (event) => {
     const strategyBtn = document.getElementById('btn-strategy');
     const analysisMenu = document.getElementById('analysis-menu');
