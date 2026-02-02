@@ -33,10 +33,10 @@ const core = {
         if (data.msg_type === 'authorize' && !data.error) {
             this.isAuthorized = true;
             ui.onLoginSuccess();
-            // Subscreve ao Saldo e aos Ticks
+            // Subscreve ao Saldo e aos Ticks no Ativo de 1 Segundo (1HZ100V)
             this.ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
-            this.ws.send(JSON.stringify({ ticks: 'R_100', subscribe: 1 }));
-            ui.addLog("Terminal Conectado e Autorizado!", "success");
+            this.ws.send(JSON.stringify({ ticks: '1HZ100V', subscribe: 1 }));
+            ui.addLog("Terminal Conectado em Alta Frequência (1s)!", "success");
         }
 
         // 2. Atualização de Saldo (Sincroniza os dois painéis)
@@ -93,7 +93,7 @@ const core = {
 
         // Atualiza preço visual no Radar
         const priceDisplay = document.getElementById('price-display');
-        if(priceDisplay) priceDisplay.innerText = `VOLATILITY 100: ${price.toFixed(2)}`;
+        if(priceDisplay) priceDisplay.innerText = `VOLATILITY 100 (1s): ${price.toFixed(2)}`;
 
         // --- MOTOR DE ANÁLISE ---
         if (typeof Brain !== 'undefined' && typeof ui !== 'undefined') {
@@ -104,7 +104,7 @@ const core = {
 
             // Se estiver na aba DÍGITOS e o BOT de DÍGITOS ligado
             if (ui.isDigitBotRunning && digitData.signals.length > 0) {
-                // Pega o primeiro sinal da lista (o mais forte)
+                // Pega o primeiro sinal da lista (o mais forte/ sniper)
                 this.executeDigitTrade(digitData.signals[0]);
             }
 
@@ -144,7 +144,7 @@ const core = {
                     currency: 'USD',
                     duration: 1,
                     duration_unit: 't',
-                    symbol: 'R_100'
+                    symbol: '1HZ100V'
                 },
                 subscribe: 1
             }));
@@ -173,10 +173,10 @@ const core = {
                 currency: 'USD',
                 duration: 1,
                 duration_unit: 't',
-                symbol: 'R_100'
+                symbol: '1HZ100V'
             };
 
-            // Adiciona Barreira (ex: Under 7 precisa de barrier "7")
+            // Adiciona Barreira (ex: Sniper 30% Under 3 precisa de barrier "3")
             if (signal.barrier !== undefined) {
                 params.barrier = signal.barrier.toString();
             }
