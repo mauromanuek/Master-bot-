@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Master Bot | Terminal Pro</title>
+    <title>Master Bot | Terminal Sniper Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -27,9 +27,17 @@
         
         /* Estilos específicos para o gráfico de dígitos */
         .digit-bar { transition: height 0.5s ease, background-color 0.3s ease; }
+
+        /* Estilo para as notificações Sniper */
+        #ui-toast { transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); }
     </style>
 </head>
 <body class="h-screen flex flex-col" onclick="ui.closeAllMenus()">
+
+    <!-- NOTIFICAÇÕES SNIPER (TOAST) -->
+    <div id="ui-toast" class="fixed top-24 left-1/2 -translate-x-1/2 z-[500] bg-yellow-500 text-black px-6 py-2 rounded-full font-bold text-[10px] uppercase tracking-widest shadow-2xl opacity-0 pointer-events-none text-center">
+        Sincronizando...
+    </div>
 
     <!-- LOGIN -->
     <div id="view-login" class="fixed inset-0 z-[200] bg-[#0b0e11] flex items-center justify-center p-6">
@@ -39,6 +47,7 @@
                     <i class="fas fa-terminal text-black text-3xl"></i>
                 </div>
                 <h1 class="text-2xl font-black uppercase tracking-tighter">Master <span class="text-yellow-500">Core</span></h1>
+                <p class="text-[9px] text-gray-500 uppercase tracking-[0.3em] mt-2">Tecnologia Sniper Ativada</p>
             </div>
             <div class="space-y-4">
                 <input type="password" id="api-token" placeholder="Insira seu Deriv API Token" class="w-full bg-black border border-gray-800 p-5 rounded-2xl outline-none focus:border-yellow-500 text-white font-mono text-center">
@@ -69,10 +78,10 @@
         <!-- ABA 1: ANÁLISE (RADAR) -->
         <section id="mode-analysis" class="view-section active p-6 justify-center items-center">
             <div class="w-full max-w-4xl text-center mb-8">
-                <span id="price-display" class="text-gray-500 font-mono text-xs block mb-4">Aguardando Conexão...</span>
+                <span id="price-display" class="text-gray-500 font-mono text-[10px] block mb-4 uppercase tracking-widest">Aguardando Conexão de Alta Frequência...</span>
                 <div class="analysis-card p-12 relative overflow-hidden">
                     <div id="signal-display" class="text-7xl font-black text-white mb-6 uppercase italic">---</div>
-                    <p id="strategy-desc" class="text-gray-500 text-[10px] uppercase font-mono tracking-widest">Sistema de Radar Desativado</p>
+                    <p id="strategy-desc" class="text-gray-500 text-[10px] uppercase font-mono tracking-widest">Radar de Ticks Desativado</p>
                     <div class="w-full bg-gray-900 h-1.5 mt-8 rounded-full overflow-hidden">
                         <div id="signal-strength" class="bg-yellow-500 h-full transition-all duration-500" style="width: 0%"></div>
                     </div>
@@ -122,7 +131,7 @@
                         </button>
                     </div>
                     <div id="log-window" class="rounded-[40px] p-4 shadow-inner overflow-y-auto border border-gray-800/50">
-                        <div class="log-entry text-gray-500 italic">> Terminal aguardando...</div>
+                        <div class="log-entry text-gray-500 italic">> Terminal Sniper aguardando...</div>
                     </div>
                 </div>
             </div>
@@ -148,8 +157,8 @@
                 <div class="analysis-card p-6">
                     <div class="flex justify-between items-center mb-6">
                         <div class="flex flex-col">
-                            <span class="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Frequência de Dígitos</span>
-                            <span class="text-[8px] text-gray-600 uppercase">Análise Profissional: Últimos 25 Ticks</span>
+                            <span class="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Frequência Sniper (1s)</span>
+                            <span class="text-[8px] text-gray-600 uppercase">Monitoramento de Ticks e Exaustão</span>
                         </div>
                         <div class="text-right">
                             <span class="text-[9px] text-gray-500 uppercase block leading-none">Último Dígito</span>
@@ -220,9 +229,9 @@
 
     <!-- MODAL DE DEFINIÇÕES (ESTILO LUXO) -->
     <div id="digit-settings-modal" class="fixed inset-0 z-[300] bg-black/80 backdrop-blur-sm hidden items-center justify-center p-6">
-        <div class="w-full max-w-sm bg-[#161a1e] rounded-[40px] border border-gray-800 shadow-2xl p-8 relative">
+        <div class="w-full max-sm bg-[#161a1e] rounded-[40px] border border-gray-800 shadow-2xl p-8 relative">
             <div class="flex justify-between items-center mb-8">
-                <h2 class="text-xl font-black uppercase italic text-yellow-500 tracking-tighter">Definições</h2>
+                <h2 class="text-xl font-black uppercase italic text-yellow-500 tracking-tighter">Sniper Config</h2>
                 <button onclick="ui.toggleDigitSettings()" class="text-gray-500 hover:text-white transition-colors text-xl">
                     <i class="fas fa-times"></i>
                 </button>
@@ -231,8 +240,9 @@
             <div class="space-y-5">
                 <!-- Seletor de Estratégia -->
                 <div>
-                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2 tracking-widest">Estratégia de Dígitos Ativa</label>
-                    <select id="select-digit-strategy" class="w-full bg-black border border-gray-800 p-4 rounded-2xl outline-none text-white text-xs font-bold uppercase appearance-none">
+                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2 tracking-widest">Estratégia Sniper Ativa</label>
+                    <select id="select-digit-strategy" class="w-full bg-black border border-gray-800 p-4 rounded-2xl outline-none text-white text-[11px] font-bold uppercase appearance-none">
+                        <option value="Sniper 30%">🎯 Sniper 30% (Under 3)</option>
                         <option value="Coringa Cash">⚡ Coringa Cash (Under 7)</option>
                         <option value="Equilíbrio de Ouro">🏆 Equilíbrio de Ouro (Exaustão 50/50)</option>
                     </select>
@@ -258,7 +268,7 @@
 
                 <!-- Botão Salvar -->
                 <button onclick="ui.saveDigitSettings()" class="w-full py-5 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-[0.2em] mt-4 shadow-xl shadow-yellow-500/10 active:scale-95 transition-all">
-                    Salvar Dados
+                    Salvar Dados Sniper
                 </button>
             </div>
         </div>
