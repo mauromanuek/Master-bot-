@@ -6,7 +6,7 @@ const RiskManager = {
     isPaused: false,
     pauseTimer: null,
     currentStake: 0, // Armazena o valor atual (com ou sem Martingale)
-    maxConsecutiveLosses: 6, // STOP DE CICLO: Após 6 perdas, reseta a stake para proteger a banca
+    maxConsecutiveLosses: 5, // STOP DE CICLO: Limite de segurança para evitar quebras em sequências ruins
 
     // Captura os valores atuais configurados na interface do usuário
     getSettings() {
@@ -22,7 +22,7 @@ const RiskManager = {
     canTrade(analysis) {
         const settings = this.getSettings();
 
-        // 1. Verifica se algum dos robôs está ativo (Tendência ou Dígitos)
+        // 1. Verifica se algum dos robôs está ativo
         if (!ui.isBotRunning && !ui.isDigitBotRunning) return false;
 
         // 2. Verifica se o bot está no período de descanso
@@ -31,7 +31,7 @@ const RiskManager = {
             return false;
         }
 
-        // 3. Verifica se a meta de lucro (Take Profit) foi atingida na sessão
+        // 3. Verifica se a meta de lucro (Take Profit) foi atingida
         if (this.sessionProfit >= settings.tp) {
             ui.addLog(`🎯 META ATINGIDA: +$${this.sessionProfit.toFixed(2)}`, "success");
             if (ui.isBotRunning) ui.toggleBot();
@@ -47,11 +47,14 @@ const RiskManager = {
             return false;
         }
 
-        // 5. Filtro de Confiança Mínima Baseado na Estratégia
+        // 5. Filtro de Confiança Especializado por Estratégia
         if (ui.currentMode === 'digits') {
-            // Sniper 30% exige confiança máxima (98) devido à barreira curta
-            if (ui.selectedDigitStrategy === 'Sniper 30%' && analysis.strength < 95) return false;
-            if (analysis.strength < 80) return false;
+            // Sniper 30% exige precisão extrema
+            if (ui.selectedDigitStrategy === 'Sniper 30%') {
+                if (analysis.strength < 98) return false;
+            } else if (analysis.strength < 85) {
+                return false;
+            }
         } else {
             if (settings.mode === 'Scalper' && analysis.strength < 80) return false;
             if (settings.mode === 'Caça Ganho' && analysis.strength < 75) return false;
@@ -70,7 +73,7 @@ const RiskManager = {
             // --- CASO DE VITÓRIA (WIN) ---
             this.wins++;
             this.consecutiveLosses = 0; 
-            this.currentStake = 0; // Fim do ciclo Martingale
+            this.currentStake = 0; // Reseta ciclo
             ui.addLog(`✅ GANHOU: +$${profit.toFixed(2)} | Total: $${this.sessionProfit.toFixed(2)}`, "success");
         } else {
             // --- CASO DE DERROTA (LOSS) ---
@@ -78,22 +81,18 @@ const RiskManager = {
             this.consecutiveLosses++;
             ui.addLog(`❌ PERDEU: $${profit.toFixed(2)} | Total: $${this.sessionProfit.toFixed(2)}`, "error");
 
-            // REGRA DE SEGURANÇA: Stop de Ciclo
+            // REGRA DE SEGURANÇA: Stop de Ciclo para Sniper
             if (this.consecutiveLosses >= this.maxConsecutiveLosses) {
-                ui.addLog(`⚠️ STOP DE CICLO: ${this.maxConsecutiveLosses} perdas seguidas. Resetando Stake para segurança.`, "warn");
+                ui.addLog(`⚠️ LIMITE DE CICLO ATINGIDO: ${this.maxConsecutiveLosses} losses. Resetando para proteger banca.`, "warn");
                 this.consecutiveLosses = 0;
                 this.currentStake = settings.stake;
-                this.applyPause(3); // Pausa obrigatória de 3 minutos após quebra de ciclo
-            }
-
-            // REGRA RIGOROSA: 2 perdas seguidas no Scalping -> Pausa automática
-            if (ui.currentStrategy === 'Scalper' && ui.currentMode !== 'digits' && this.consecutiveLosses >= 2) {
-                this.applyPause(2); 
+                this.applyPause(5); // Pausa longa para esfriar o algoritmo
             }
         }
 
         this.updateUIMetrics();
 
+        // Verificação de Meta Global
         if (this.sessionProfit >= settings.tp) {
             ui.addLog(`🎯 SESSÃO FINALIZADA NO TAKE PROFIT: $${this.sessionProfit.toFixed(2)}`, "success");
             if (ui.isBotRunning) ui.toggleBot();
@@ -105,10 +104,11 @@ const RiskManager = {
         }
     },
 
-    // 📈 CÁLCULO DE MARTINGALE DINÂMICO E SUAVE
+    // 📈 CÁLCULO DE MARTINGALE ESPECIALIZADO (DIFERENCIAÇÃO DE RETORNOS)
     getNextStake(contractType) {
         const settings = this.getSettings();
         
+        // Se for a primeira entrada do ciclo
         if (this.consecutiveLosses === 0) {
             this.currentStake = settings.stake;
             return this.currentStake;
@@ -116,21 +116,27 @@ const RiskManager = {
 
         let multiplier = 2.1; 
 
+        // AJUSTE DE RETORNO POR TIPO DE ESTRATÉGIA
         if (ui.currentMode === 'digits') {
             if (ui.selectedDigitStrategy === 'Sniper 30%') {
-                // MARTINGALE SUAVE: Como paga ~230%, um multiplicador de 1.5x já recupera com lucro
-                multiplier = 1.5; 
+                /* 🎯 SNIPER 30%: Retorno de ~230%. 
+                   Multiplicador suave (1.55x) é suficiente para recuperar e lucrar muito. */
+                multiplier = 1.55; 
             } else if (ui.selectedDigitStrategy === 'Coringa Cash') {
-                // Paga ~31%, exige multiplicador alto para recuperar em 1 tentativa
-                multiplier = 3.55;
+                /* ⚡ CORINGA CASH: Retorno de ~31%. 
+                   Exige multiplicador alto (4.3x) para que a vitória cubra o prejuízo anterior. */
+                multiplier = 4.3;
             } else if (ui.selectedDigitStrategy === 'Equilíbrio de Ouro') {
-                // Paga ~95%, multiplicador padrão
+                /* 🏆 EQUILÍBRIO: Retorno de ~95%. 
+                   Multiplicador padrão de recuperação (2.1x). */
                 multiplier = 2.1;
             }
         } else {
+            // Modos de tendência pagam ~95%
             multiplier = 2.1;
         }
 
+        // Cálculo da Stake do próximo nível do Martingale
         this.currentStake = parseFloat((this.currentStake * multiplier).toFixed(2));
         return this.currentStake;
     },
@@ -150,14 +156,14 @@ const RiskManager = {
 
     applyPause(minutes) {
         this.isPaused = true;
-        ui.addLog(`🚫 FILTRO DE SEGURANÇA: Pausando por ${minutes}min para análise de mercado.`, "warn");
+        ui.addLog(`🚫 PAUSA ESTRATÉGICA: Sistema aguardando ${minutes}min para novo ciclo.`, "warn");
         
         if (this.pauseTimer) clearTimeout(this.pauseTimer);
         
         this.pauseTimer = setTimeout(() => {
             this.isPaused = false;
             this.consecutiveLosses = 0;
-            ui.addLog("🔄 Tempo de recuperação finalizado. Retomando motor.", "info");
+            ui.addLog("🔄 Ciclo de descanso finalizado. Reiniciando monitoramento Sniper.", "info");
         }, minutes * 60 * 1000);
     },
 
