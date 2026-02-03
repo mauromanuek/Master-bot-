@@ -102,10 +102,13 @@ const core = {
             const digitData = Brain.analyzeDigits(price);
             ui.updateDigitUI(digitData.last, digitData.stats);
 
-            // Se estiver na aba DÍGITOS e o BOT de DÍGITOS ligado
+            // 🎯 CORREÇÃO: Filtra apenas o sinal da estratégia selecionada pelo usuário
             if (ui.isDigitBotRunning && digitData.signals.length > 0) {
-                // Pega o primeiro sinal da lista (o mais forte/ sniper)
-                this.executeDigitTrade(digitData.signals[0]);
+                const activeSignal = digitData.signals.find(s => s.name === ui.selectedDigitStrategy);
+                
+                if (activeSignal) {
+                    this.executeDigitTrade(activeSignal);
+                }
             }
 
             // 2. ANÁLISE DE TENDÊNCIA (Modos Scalper, Caça Ganho, Profunda)
@@ -163,7 +166,7 @@ const core = {
             const tradeStake = RiskManager.getNextStake(signal.type);
             
             this.isTrading = true;
-            ui.addLog(`🎲 ${signal.name} [$${tradeStake}]`, "info");
+            ui.addLog(`🎲 ${signal.name} [$${tradeStake}]`, "success");
 
             // Define os parâmetros baseados na estratégia de dígito
             let params = {
