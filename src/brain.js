@@ -68,7 +68,7 @@ const Brain = {
         return { action: "AGUARDAR", strength: 5, reason: "Divergência Estrutural" };
     },
 
-    // 2️⃣ MOTOR PROFISSIONAL DE DÍGITOS (ESPECIALIZAÇÃO SNIPER)
+    // 2️⃣ MOTOR ESPECIALIZADO DE DÍGITOS
     analyzeDigits(price) {
         const priceStr = price.toString();
         const lastDigit = parseInt(priceStr.charAt(priceStr.length - 1));
@@ -107,53 +107,48 @@ const Brain = {
         const last12 = fullHistory.slice(-12);
         const last5Sum = last5.reduce((a, b) => a + b, 0);
 
-        // FILTRO ANTI-REPETIÇÃO: Evita anomalias e padrões de manipulação
+        // Filtro Universal Anti-Repetição (Bloqueio de anomalias)
         if (lastDigit === prevDigit) return [];
 
-        // 🎯 ESTRATÉGIA: SNIPER 30% (Under 3: 0, 1, 2)
-        // Filtro 1: Seca Absoluta (Drought) - Ninguém saiu nos últimos 12 ticks
+        // 🎯 DETALHAMENTO: SNIPER 30% (Under 3: 0, 1, 2)
         const lowDrought = last12.filter(d => d < 3).length === 0;
-        // Filtro 2: Soma Momentum - Os últimos números estão "cansando" de serem altos
-        const isSumDropping = last5Sum < 30; 
-        // Filtro 3: Perda Virtual - O último dígito foi um erro (>= 3), confirmando reversão
-        const isVirtualLoss30 = lastDigit >= 3;
+        const isSumDropping = last5Sum < 30; // Exaustão de números altos
+        const isVirtualLoss30 = lastDigit >= 3; // Confirmou que o último foi um erro
 
         if (lowDrought && isSumDropping && isVirtualLoss30) {
             activeSignals.push({
                 type: 'DIGITUNDER', barrier: 3, name: 'Sniper 30%', conf: 98,
-                reason: 'Gatilho Sniper: Seca de 0-2 com exaustão de momentum.'
+                reason: 'Gatilho Sniper: Seca absoluta de 0-2 com reversão confirmada.'
             });
         }
 
-        // ⚡ ESTRATÉGIA: CORINGA CASH (Under 7: 0 a 6)
-        // Filtro 1: Cluster de Muralha - Pelo menos 3 números (7, 8 ou 9) em 5 ticks
+        // ⚡ DETALHAMENTO: CORINGA CASH (Under 7: 0 a 6)
         const clusterHigh = last5.filter(d => d >= 7).length >= 3;
-        // Filtro 2: Perda Virtual - O último dígito obrigatoriamente é 7, 8 ou 9
-        const isVirtualLoss70 = lastDigit >= 7;
+        const isVirtualLoss70 = lastDigit >= 7; // Confirmou exaustão na muralha
 
         if (clusterHigh && isVirtualLoss70) {
             activeSignals.push({ 
                 type: 'DIGITUNDER', barrier: 7, name: 'Coringa Cash', conf: 95,
-                reason: 'Gatilho Coringa: Muralha de números altos detectada.'
+                reason: 'Gatilho Coringa: Muralha de altos detectada. Entrada em 0-6.'
             });
         }
 
-        // 🏆 ESTRATÉGIA: EQUILÍBRIO DE OURO (Exaustão Estatística)
+        // 🏆 DETALHAMENTO: EQUILÍBRIO DE OURO (Exaustão Estatística 50/50)
         const highCount12 = last12.filter(d => d >= 5).length;
         const lowCount12 = last12.filter(d => d <= 4).length;
 
-        // Se o mercado estiver preso no topo (5 a 9) por 10 de 12 ticks
+        // Entra Under se houve excesso de números altos
         if (highCount12 >= 10 && lastDigit >= 5) { 
             activeSignals.push({ 
                 type: 'DIGITUNDER', barrier: 5, name: 'Equilíbrio de Ouro', conf: 92,
-                reason: 'Gatilho Equilíbrio: Exaustão extrema no topo. Entrando em Baixos.'
+                reason: 'Gatilho Equilíbrio: Excesso de ALTOS. Buscando reversão.'
             });
         }
-        // Se o mercado estiver preso na base (0 a 4) por 10 de 12 ticks
+        // Entra Over se houve excesso de números baixos
         if (lowCount12 >= 10 && lastDigit <= 4) {
             activeSignals.push({ 
                 type: 'DIGITOVER', barrier: 4, name: 'Equilíbrio de Ouro', conf: 92,
-                reason: 'Gatilho Equilíbrio: Exaustão extrema na base. Entrando em Altos.'
+                reason: 'Gatilho Equilíbrio: Excesso de BAIXOS. Buscando reversão.'
             });
         }
 
@@ -161,23 +156,23 @@ const Brain = {
     },
 
     updateStatusMessage(signals) {
+        // Busca a estratégia ativa da UI para tornar a mensagem relevante
+        const activeStrategy = (typeof ui !== 'undefined') ? ui.selectedDigitStrategy : 'Sniper 30%';
         const last12 = this.digitHistory.slice(-12);
-        const last5 = this.digitHistory.slice(-5);
         const lastDigit = this.digitHistory[this.digitHistory.length - 1];
 
-        if (signals.length > 0) {
-            this.statusMessage = `🎯 ALVO IDENTIFICADO: ${signals[0].name}. Aguardando milissegundo de entrada...`;
+        if (signals.length > 0 && signals[0].name === activeStrategy) {
+            this.statusMessage = `🎯 ALVO CONFIRMADO: ${signals[0].name}. Enviando ordem Sniper...`;
         } else {
-            // Monitoramento dinâmico baseado na estratégia selecionada na UI (Simulado aqui por lógica)
-            const lowDroughtCount = last12.filter(d => d < 3).length;
-            const highClusterCount = last5.filter(d => d >= 7).length;
-
-            if (lowDroughtCount === 0) {
-                this.statusMessage = `🔍 SNIPER: Seca crítica de 0-2 (Drought: ${last12.length}/12). Monitorando reversão...`;
-            } else if (highClusterCount >= 2) {
-                this.statusMessage = `⚡ CORINGA: Cluster de números altos em formação (${highClusterCount}/5).`;
+            if (activeStrategy === 'Sniper 30%') {
+                const drought = last12.filter(d => d < 3).length;
+                this.statusMessage = drought === 0 
+                    ? `🔍 SNIPER: Seca absoluta de 0-2 (12/12). Aguardando perda virtual...`
+                    : `📡 SNIPER: Monitorando seca de dígitos baixos (${drought} detectados).`;
+            } else if (activeStrategy === 'Coringa Cash') {
+                this.statusMessage = `⚡ CORINGA: Buscando muralha de números altos (7-9) para entrada segura.`;
             } else {
-                this.statusMessage = `📡 RADAR: Sintonizando ticks. Último dígito: ${lastDigit || '?'}. Buscando padrões de exaustão...`;
+                this.statusMessage = `🏆 EQUILÍBRIO: Analisando exaustão estatística. Último dígito: ${lastDigit || '?'}.`;
             }
         }
     },
