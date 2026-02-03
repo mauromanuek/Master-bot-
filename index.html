@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Master Bot | Terminal Sniper Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=JetBrains+Mono&display=swap');
+        
+        /* Reset de Tela Blindado */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden; }
+        
+        body { 
+            background-color: #0b0e11; 
+            color: #eaecef; 
+            font-family: 'Inter', sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        /* Área Principal de Conteúdo - Única que Rola */
+        main#main-content { 
+            flex: 1; 
+            overflow-y: auto; 
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            position: relative;
+        }
+
+        .view-section { display: none; width: 100%; padding: 1.5rem; }
+        .view-section.active { display: flex; flex-direction: column; }
+
+        /* Estilos de Componentes */
+        #analysis-menu { display: none; transform: translateY(-10px); opacity: 0; transition: all 0.2s ease; }
+        #analysis-menu.show { display: block; transform: translateY(0); opacity: 1; }
+        
+        .mode-btn { transition: all 0.3s; border-top: 3px solid transparent; opacity: 0.5; }
+        .mode-btn.active { border-top-color: #fcd535; background: #1e2329; color: #fcd535; opacity: 1; }
+        
+        .analysis-card { background: #161a1e; border: 1px solid #2b3139; border-radius: 24px; }
+        
+        #log-window { 
+            background: #000; 
+            font-family: 'JetBrains+Mono', monospace; 
+            font-size: 10px; 
+            color: #4ade80; 
+            overflow-y: auto; 
+            border: 1px solid #1e2329; 
+            height: 250px; 
+            border-radius: 20px;
+        }
+        
+        .log-entry { border-bottom: 1px solid #111; padding: 8px 10px; line-height: 1.4; }
+        .digit-bar { transition: height 0.5s ease, background-color 0.3s ease; }
+        
+        #ui-toast { transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55); pointer-events: none; }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2b3139; border-radius: 10px; }
+
+        /* Ajuste para rodapé não cobrir conteúdo */
+        .scroll-spacer { height: 80px; width: 100%; flex-shrink: 0; }
+    </style>
+</head>
+<body onclick="ui.closeAllMenus()">
+
+    <!-- NOTIFICAÇÕES SNIPER -->
+    <div id="ui-toast" class="fixed top-24 left-1/2 -translate-x-1/2 z-[500] bg-yellow-500 text-black px-6 py-3 rounded-full font-bold text-[10px] uppercase tracking-widest shadow-2xl opacity-0 text-center min-w-[280px]">
+        Sincronizando...
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="view-login" class="fixed inset-0 z-[1000] bg-[#0b0e11] flex items-center justify-center p-6">
+        <div class="w-full max-w-md bg-[#161a1e] p-10 rounded-[40px] border border-gray-800 shadow-2xl text-center">
+            <div class="mb-8 text-center">
+                <div class="w-20 h-20 bg-yellow-500 rounded-3xl mx-auto flex items-center justify-center mb-4 shadow-lg shadow-yellow-500/20">
+                    <i class="fas fa-terminal text-black text-3xl"></i>
+                </div>
+                <h1 class="text-2xl font-black uppercase tracking-tighter">Master <span class="text-yellow-500">Core</span></h1>
+                <p class="text-[9px] text-gray-500 uppercase tracking-[0.3em] mt-2">Tecnologia Sniper Ativada</p>
+            </div>
+            <div class="space-y-4">
+                <input type="password" id="api-token" placeholder="Deriv API Token" class="w-full bg-black border border-gray-800 p-5 rounded-2xl outline-none focus:border-yellow-500 text-white font-mono text-center">
+                <button onclick="core.init()" class="w-full py-5 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-widest hover:bg-yellow-400 transition-all active:scale-95">Conectar Terminal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER FIXO (Topo) -->
+    <header id="main-header" class="h-20 border-b border-gray-800 bg-[#0b0e11] hidden shrink-0 items-center justify-between px-6 z-[60]">
+        <div class="relative">
+            <button id="btn-strategy" onclick="ui.toggleAnalysisMenu(event)" class="bg-[#1e2329] px-4 py-2 rounded-lg border border-gray-700 flex items-center gap-3 hover:border-yellow-500">
+                <i class="fas fa-brain text-yellow-500 text-xs"></i>
+                <span id="selected-analysis-name" class="font-bold uppercase text-[11px]">Scalper</span>
+                <i class="fas fa-chevron-down text-[10px] text-gray-500"></i>
+            </button>
+            <div id="analysis-menu" class="absolute left-0 mt-2 w-56 bg-[#1e2329] border border-gray-700 rounded-xl shadow-2xl z-[100]">
+                <div onclick="ui.setStrategy('Scalper')" class="p-4 hover:bg-gray-800 text-xs font-bold border-b border-gray-800/50 cursor-pointer uppercase">⚡ Scalper</div>
+                <div onclick="ui.setStrategy('Caça Ganho')" class="p-4 hover:bg-gray-800 text-xs font-bold border-b border-gray-800/50 cursor-pointer uppercase">🎯 Caça Ganho</div>
+                <div onclick="ui.setStrategy('Análise Profunda')" class="p-4 hover:bg-gray-800 text-xs font-bold cursor-pointer uppercase">🧠 Análise Profunda</div>
+            </div>
+        </div>
+        <div id="acc-balance" class="font-mono text-green-500 font-black text-xl tracking-tighter">$ 0.00</div>
+    </header>
+
+    <!-- CONTEÚDO ROLÁVEL (Meio) -->
+    <main id="main-content" class="hidden">
+        
+        <!-- RADAR -->
+        <section id="mode-analysis" class="view-section active">
+            <div class="text-center py-6">
+                <span id="price-display" class="text-gray-500 font-mono text-[10px] block mb-4 uppercase tracking-[0.2em]">Sincronizando Ativo 1s...</span>
+                <div class="analysis-card p-10 relative overflow-hidden shadow-2xl">
+                    <div id="signal-display" class="text-7xl font-black text-white mb-6 uppercase italic tracking-tighter">---</div>
+                    <p id="strategy-desc" class="text-gray-500 text-[10px] uppercase font-mono tracking-[0.2em]">Aguardando Filtros de Confirmação</p>
+                    <div class="w-full bg-gray-900 h-1 mt-10 rounded-full overflow-hidden">
+                        <div id="signal-strength" class="bg-yellow-500 h-full transition-all duration-700" style="width: 0%"></div>
+                    </div>
+                </div>
+                <button onclick="ui.toggleAnalysis()" id="btn-analysis-control" class="mt-8 w-full py-5 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all">Iniciar Radar</button>
+            </div>
+            <div class="scroll-spacer"></div>
+        </section>
+
+        <!-- BOT TREND -->
+        <section id="mode-auto" class="view-section">
+            <div class="space-y-6 pt-4">
+                <div class="bg-[#161a1e] p-8 rounded-[40px] border border-gray-800 shadow-xl">
+                    <h2 class="text-xs font-black uppercase italic text-yellow-500 tracking-[0.3em] mb-6">Configuração de Fluxo</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                            <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2">Stake ($)</label>
+                            <input type="number" id="inp-stake" value="0.35" class="bg-transparent text-xl font-black outline-none w-full text-white">
+                        </div>
+                        <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                            <label class="text-[9px] text-green-500 font-bold uppercase block mb-2">Meta ($)</label>
+                            <input type="number" id="inp-tp" value="5.00" class="bg-transparent text-xl font-bold outline-none w-full">
+                        </div>
+                        <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                            <label class="text-[9px] text-red-500 font-bold uppercase block mb-2">Stop ($)</label>
+                            <input type="number" id="inp-sl" value="10.00" class="bg-transparent text-xl font-bold outline-none w-full">
+                        </div>
+                    </div>
+                    <button onclick="ui.toggleBot()" id="btn-bot" class="w-full py-6 bg-yellow-500 text-black font-black rounded-3xl uppercase tracking-widest mt-8 shadow-xl active:scale-95 transition-all">Ligar Motor Trend</button>
+                </div>
+                <div id="log-window" class="border border-gray-800/50">
+                    <div class="log-entry text-gray-500 italic opacity-50">> Aguardando inicialização do sistema...</div>
+                </div>
+            </div>
+            <div class="scroll-spacer"></div>
+        </section>
+
+        <!-- DÍGITOS SNIPER -->
+        <section id="mode-digits" class="view-section">
+            <div class="space-y-4 pt-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-[#161a1e] p-5 rounded-3xl border border-gray-800 shadow-lg">
+                        <span class="text-[8px] text-gray-500 uppercase font-black tracking-widest">Saldo Atual</span>
+                        <div id="digit-balance-display" class="text-xl font-black text-white leading-tight mt-1">$ 0.00</div>
+                    </div>
+                    <div class="bg-[#161a1e] p-5 rounded-3xl border border-gray-800 shadow-lg">
+                        <span class="text-[8px] text-gray-500 uppercase font-black tracking-widest">Lucro Sessão</span>
+                        <div id="digit-profit-display" class="text-xl font-black text-gray-400 leading-tight mt-1">$ 0.00</div>
+                    </div>
+                </div>
+
+                <div class="analysis-card p-6 shadow-2xl">
+                    <div class="flex justify-between items-end mb-6">
+                        <div>
+                            <span class="text-[10px] text-yellow-500 font-black uppercase tracking-[0.2em] block">Sniper Frequency (1s)</span>
+                            <span class="text-[8px] text-gray-600 uppercase font-bold">Monitoramento Sniper</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[9px] text-gray-500 uppercase block font-bold">Digit</span>
+                            <span id="current-digit-view" class="text-4xl font-black text-white font-mono leading-none">?</span>
+                        </div>
+                    </div>
+                    <div class="flex items-end justify-between h-32 gap-2" id="digit-graph"></div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button onclick="ui.toggleDigitSettings()" class="w-16 h-16 rounded-2xl bg-[#161a1e] border border-gray-800 text-yellow-500 flex items-center justify-center shadow-lg active:scale-90 transition-all">
+                        <i class="fas fa-sliders-h text-xl"></i>
+                    </button>
+                    <button id="btn-digit-bot" onclick="ui.toggleDigitBot()" class="flex-1 h-16 bg-green-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all">
+                        Ativar Sniper
+                    </button>
+                    <button onclick="ui.clearTerminal()" class="w-16 h-16 rounded-2xl bg-[#161a1e] border border-gray-800 text-red-500 flex items-center justify-center shadow-lg active:scale-90 transition-all">
+                        <i class="fas fa-trash-alt text-xl"></i>
+                    </button>
+                </div>
+
+                <div class="bg-[#161a1e] rounded-[30px] border border-gray-800 overflow-hidden shadow-2xl mb-4">
+                    <div class="p-4 border-b border-gray-800 bg-black/20 flex justify-between items-center">
+                        <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Histórico Sniper</span>
+                        <div class="flex gap-4 text-[10px] font-bold">
+                            <span class="text-green-500">W: <span id="stat-wins">0</span></span>
+                            <span class="text-red-500">L: <span id="stat-losses">0</span></span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <tbody id="digit-history-list" class="text-[11px] font-mono divide-y divide-gray-800/30"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="scroll-spacer"></div>
+        </section>
+    </main>
+
+    <!-- RODAPÉ FIXO (Fundo) -->
+    <footer id="main-footer" class="h-20 border-t border-gray-800 bg-[#1e2329] hidden shrink-0 grid-cols-3 z-[100] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        <button onclick="ui.switchMode('analysis')" id="tab-analysis" class="mode-btn active flex flex-col items-center justify-center gap-1">
+            <i class="fas fa-satellite-dish text-sm"></i>
+            <span class="text-[9px] font-black uppercase tracking-widest">Radar</span>
+        </button>
+        <button onclick="ui.switchMode('auto')" id="tab-auto" class="mode-btn flex flex-col items-center justify-center gap-1">
+            <i class="fas fa-robot text-sm"></i>
+            <span class="text-[9px] font-black uppercase tracking-widest">Trend</span>
+        </button>
+        <button onclick="ui.switchMode('digits')" id="tab-digits" class="mode-btn flex flex-col items-center justify-center gap-1">
+            <i class="fas fa-crosshairs text-sm"></i>
+            <span class="text-[9px] font-black uppercase tracking-widest">Sniper</span>
+        </button>
+    </footer>
+
+    <!-- MODAL SETUP -->
+    <div id="digit-settings-modal" class="fixed inset-0 z-[1100] bg-black/90 backdrop-blur-md hidden items-center justify-center p-6">
+        <div class="w-full max-w-sm bg-[#161a1e] rounded-[40px] border border-gray-800 shadow-2xl p-8">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-xl font-black uppercase italic text-yellow-500 tracking-tighter">Sniper Config</h2>
+                <button onclick="ui.toggleDigitSettings()" class="text-gray-500 hover:text-white transition-colors"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="space-y-5">
+                <div>
+                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2 tracking-widest">Estratégia Sniper</label>
+                    <select id="select-digit-strategy" class="w-full bg-black border border-gray-800 p-4 rounded-2xl outline-none text-white text-[11px] font-bold uppercase appearance-none">
+                        <option value="Sniper 30%">🎯 Sniper 30% (Under 3)</option>
+                        <option value="Coringa Cash">⚡ Coringa Cash (Under 7)</option>
+                        <option value="Equilíbrio de Ouro">🏆 Equilíbrio de Ouro (Exaustão)</option>
+                    </select>
+                </div>
+                <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-2">Stake ($)</label>
+                    <input type="number" id="digit-stake" value="0.35" class="bg-transparent text-2xl font-black outline-none w-full text-yellow-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                        <label class="text-[9px] text-green-500 font-bold uppercase block mb-2">Meta ($)</label>
+                        <input type="number" id="digit-tp" value="5.00" class="bg-transparent text-lg font-bold outline-none w-full text-white">
+                    </div>
+                    <div class="bg-black/40 p-5 rounded-2xl border border-gray-800">
+                        <label class="text-[9px] text-red-500 font-bold uppercase block mb-2">Stop ($)</label>
+                        <input type="number" id="digit-sl" value="10.00" class="bg-transparent text-lg font-bold outline-none w-full text-white">
+                    </div>
+                </div>
+                <button onclick="ui.saveDigitSettings()" class="w-full py-5 bg-yellow-500 text-black font-black rounded-2xl uppercase tracking-[0.2em] mt-4 shadow-xl active:scale-95 transition-all">Salvar Sniper Config</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="src/deriv_api.js"></script>
+    <script src="src/brain.js"></script>
+    <script src="src/risk_manager.js"></script>
+    <script src="src/ui_controller.js"></script>
+</body>
+</html>
