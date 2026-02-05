@@ -88,7 +88,7 @@
             async init() {
                 const token = document.getElementById('api-token').value;
                 if(!token) return;
-                this.ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
+                this.ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
                 this.ws.onopen = () => {
                     this.ws.send(JSON.stringify({ authorize: token }));
                     this.requestWakeLock();
