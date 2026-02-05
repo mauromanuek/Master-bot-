@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PREVIUS SNIPER v3.5 | Pro Institutional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #020408; color: #8b949e; font-family: 'JetBrains Mono', monospace; overflow: hidden; height: 100vh; width: 100vw; }
+        .panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; }
+        .footer-fixed { position: fixed; bottom: 0; left: 0; right: 0; background: #010409; border-top: 2px solid #21262d; min-height: 120px; z-index: 100; }
+        .win-log { border-left: 3px solid #238636; background: rgba(35, 134, 54, 0.05); }
+        .loss-log { border-left: 3px solid #da3633; background: rgba(218, 54, 51, 0.05); }
+        .blink { animation: blinker 1s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
+        .score-bar { height: 4px; background: #21262d; border-radius: 2px; overflow: hidden; margin-top: 10px; }
+        .score-fill { height: 100%; transition: width 0.5s ease; }
+        .stats-badge { background: #161b22; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px; }
+        #config-drawer { transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1); transform: translateY(100%); z-index: 90; position: absolute; bottom: 120px; left: 0; right: 0; }
+        #config-drawer.open { transform: translateY(0); }
+        .btn-glow { box-shadow: 0 0 15px rgba(37, 99, 235, 0.2); }
+        .btn-glow:hover { box-shadow: 0 0 25px rgba(37, 99, 235, 0.4); }
+    </style>
+</head>
+<body class="flex flex-col p-3">
+
+    <!-- DASHBOARD DE PERFORMANCE (TOP LEFT) -->
+    <div id="stats-panel" class="hidden fixed top-4 left-4 z-[110] flex gap-2">
+        <div class="stats-badge flex flex-col items-center min-w-[65px]">
+            <span class="text-[7px] text-gray-500 font-bold uppercase tracking-tighter">Wins</span>
+            <span id="stat-wins" class="text-green-500 text-xs font-black">0</span>
+        </div>
+        <div class="stats-badge flex flex-col items-center min-w-[65px]">
+            <span class="text-[7px] text-gray-500 font-bold uppercase tracking-tighter">Losses</span>
+            <span id="stat-losses" class="text-red-500 text-xs font-black">0</span>
+        </div>
+        <div class="stats-badge flex flex-col items-center min-w-[85px] border-blue-500/30">
+            <span class="text-[7px] text-gray-500 font-bold uppercase tracking-tighter">Net Profit</span>
+            <span id="stat-profit" class="text-blue-400 text-xs font-black">$ 0.00</span>
+        </div>
+    </div>
+
+    <!-- LOGIN / SETUP -->
+    <div id="setup-screen" class="flex-1 flex items-center justify-center">
+        <div class="panel p-8 w-full max-w-xs border-b-4 border-blue-600 shadow-2xl">
+            <h1 class="text-blue-500 font-black text-center text-xl mb-6 italic tracking-tighter uppercase">Previus Sniper</h1>
+            <div class="space-y-4">
+                <input type="password" id="api-token" placeholder="DERIV API TOKEN" class="w-full bg-black border border-gray-800 p-4 rounded text-center text-[10px] text-white outline-none focus:border-blue-500 transition-all">
+                <button onclick="Sniper.init()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded text-[10px] uppercase transition-all shadow-lg shadow-blue-900/30">Inicializar Algoritmo</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-8 opacity-30">
+                <div class="text-[7px] border border-gray-700 p-1.5 text-center font-mono">CORE_V3.5</div>
+                <div class="text-[7px] border border-gray-700 p-1.5 text-center font-mono">INST_HFT</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TERMINAL DE ANÁLISE -->
+    <div id="main-terminal" class="hidden flex-1 flex flex-col gap-2 pb-[130px] pt-14">
+        <div class="flex justify-between items-center text-[9px] font-bold text-gray-500 px-1">
+            <span class="flex items-center gap-2">
+                <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                SISTEMA: <span class="text-blue-400 font-mono">V3.5_STABLE_ACTIVE</span>
+            </span>
+            <span id="acc-balance" class="text-white bg-gray-900 px-4 py-1.5 rounded-full border border-gray-800 font-black tracking-widest">$ 0.00</span>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden panel p-4 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-[10px] text-blue-500 font-black uppercase tracking-[0.3em] font-mono">> Deep Analysis Log</span>
+                <span id="ai-thinking" class="blink text-[8px] text-yellow-500 font-mono italic">AGUARDANDO CONFLUÊNCIA...</span>
+            </div>
+            <div id="signal-log" class="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-[10px] scrollbar-hide">
+                <!-- Log Dinâmico -->
+            </div>
+        </div>
+    </div>
+
+    <!-- BOT FOOTER CONTROL -->
+    <div id="footer-bot" class="hidden footer-fixed flex flex-col justify-center px-6">
+        <!-- CONFIG DRAWER (HIDDEN BY DEFAULT) -->
+        <div id="config-drawer" class="panel mx-4 p-5 bg-[#0d1117] border-blue-500/40 shadow-2xl rounded-b-none border-b-0">
+            <div class="flex flex-col gap-4">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest">Risk Management</span>
+                    <button onclick="Sniper.toggleConfig()" class="text-gray-500 hover:text-white text-[10px]">✕</button>
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Stake Amount (USD):</label>
+                    <input id="bot-stake" type="number" step="0.35" value="0.35" class="w-28 bg-black border border-gray-800 text-blue-400 font-black text-xs p-2.5 rounded text-center focus:border-blue-500 outline-none">
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN ACTION BAR -->
+        <div class="flex justify-between items-center h-full">
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-2 mb-1">
+                    <div id="status-dot" class="w-3 h-3 rounded-full bg-gray-800 border border-gray-700"></div>
+                    <span id="status-text" class="text-[11px] font-black text-gray-500 tracking-tighter uppercase">Sniper Desligado</span>
+                </div>
+                <div class="flex gap-4 text-[9px] font-bold uppercase tracking-tighter text-gray-600 font-mono">
+                    <span>DOW: <b id="f-dow">--</b></span>
+                    <span>RSI: <b id="f-rsi">--</b></span>
+                    <span>VOL: <b id="f-bb">--</b></span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- BOTÃO ENGRENAGEM -->
+                <button onclick="Sniper.toggleConfig()" class="bg-gray-900 border border-gray-800 p-3.5 rounded-lg hover:bg-gray-800 transition-all group flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 group-hover:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+                
+                <!-- BOTÃO ATIVAR SNIPER -->
+                <button id="btn-toggle" onclick="Sniper.toggle()" class="bg-blue-600 text-white border border-blue-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all btn-glow">Ativar Sniper</button>
+            </div>
+        </div>
+        <div class="score-bar">
+            <div id="score-fill" class="score-fill bg-blue-500 w-0"></div>
+        </div>
+    </div>
+
+    <script>
+        const Sniper = {
+            ws: null,
+            ticks: [],
+            obv: 0,
+            isAuto: false,
+            stats: { wins: 0, losses: 0, profit: 0.0 },
+            token: '',
+            pingInterval: null,
+
+            async init() {
+                this.token = document.getElementById('api-token').value;
+                if(!this.token) return;
+                this.connect();
+            },
+
+            connect() {
+                this.ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
+                this.ws.onopen = () => {
+                    this.ws.send(JSON.stringify({ authorize: this.token }));
+                    this.startHeartbeat();
+                };
+                this.ws.onmessage = (msg) => {
+                    const data = JSON.parse(msg.data);
+                    if(data.msg_type === 'authorize' && !data.error) {
+                        document.getElementById('setup-screen').classList.add('hidden');
+                        document.getElementById('main-terminal').classList.remove('hidden');
+                        document.getElementById('footer-bot').classList.remove('hidden');
+                        document.getElementById('stats-panel').classList.remove('hidden');
+                        this.ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+                        this.ws.send(JSON.stringify({ ticks: 'R_100', subscribe: 1 }));
+                    }
+                    if(data.msg_type === 'balance') document.getElementById('acc-balance').innerText = `$ ${data.balance.balance.toFixed(2)}`;
+                    if(data.msg_type === 'tick') this.processTick(data.tick.quote);
+                    if(data.msg_type === 'proposal_open_contract') this.handleContractResult(data.proposal_open_contract);
+                };
+                this.ws.onclose = () => {
+                    clearInterval(this.pingInterval);
+                    setTimeout(() => this.connect(), 5000);
+                };
+            },
+
+            startHeartbeat() {
+                this.pingInterval = setInterval(() => {
+                    if(this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ ping: 1 }));
+                }, 30000);
+            },
+
+            processTick(price) {
+                const p = parseFloat(price);
+                if (this.ticks.length > 0) {
+                    const prev = this.ticks[this.ticks.length - 1];
+                    this.obv += (p > prev) ? 1 : (p < prev ? -1 : 0);
+                }
+                this.ticks.push(p);
+                if(this.ticks.length > 300) this.ticks.shift();
+                if(this.ticks.length >= 200) this.analyzeConfluence();
+            },
+
+            analyzeConfluence() {
+                const p = this.ticks;
+                const last = p[p.length - 1];
+                const sma200 = p.slice(-200).reduce((a,b)=>a+b)/200;
+                const sma20 = p.slice(-20).reduce((a,b)=>a+b)/20;
+                let g = 0, l = 0;
+                for(let i = p.length - 14; i < p.length; i++){
+                    let d = p[i] - p[i-1]; d > 0 ? g += d : l -= d;
+                }
+                const rsi = 100 - (100 / (1 + (g / (l || 1))));
+                const dev = Math.sqrt(p.slice(-20).map(x => Math.pow(x - sma20, 2)).reduce((a, b) => a + b) / 20);
+                const upBand = sma20 + (dev * 2);
+                const lowBand = sma20 - (dev * 2);
+
+                let callScore = 0;
+                let putScore = 0;
+
+                if(last > sma200) callScore += 30; else putScore += 30;
+                if(rsi < 30) callScore += 30; if(rsi > 70) putScore += 30;
+                if(last <= lowBand) callScore += 20; if(last >= upBand) putScore += 20;
+                if(this.obv > 0) callScore += 20; if(this.obv < 0) putScore += 20;
+
+                const finalScore = Math.max(callScore, putScore);
+                const finalAction = callScore > putScore ? 'CALL' : 'PUT';
+
+                document.getElementById('f-dow').innerText = last > sma200 ? 'ALTA' : 'BAIXA';
+                document.getElementById('f-dow').className = last > sma200 ? 'text-green-500' : 'text-red-500';
+                document.getElementById('f-rsi').innerText = rsi.toFixed(0);
+                document.getElementById('f-bb').innerText = (last >= upBand || last <= lowBand) ? 'EXTREMO' : 'NORMAL';
+                document.getElementById('score-fill').style.width = finalScore + '%';
+                document.getElementById('score-fill').className = `score-fill ${finalScore > 85 ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : 'bg-blue-500'}`;
+
+                if(finalScore >= 75) this.logSignal(finalAction, finalScore, rsi);
+                
+                // LÓGICA DE EXECUÇÃO RESTRITA A 95% OU MAIS
+                if(this.isAuto && finalScore >= 95) {
+                    this.executeTrade(finalAction);
+                }
+            },
+
+            logSignal(type, score, rsi) {
+                const box = document.getElementById('signal-log');
+                const time = new Date().toLocaleTimeString();
+                const id = `sig-${time.replace(/:/g,'')}`;
+                if(document.getElementById(id)) return;
+                const html = `
+                    <div id="${id}" class="p-4 rounded border border-gray-800 ${type === 'CALL' ? 'win-log' : 'loss-log'} transition-all hover:border-gray-600">
+                        <div class="flex justify-between items-center">
+                            <span class="${type === 'CALL' ? 'text-green-500' : 'text-red-500'} font-black text-xs italic underline tracking-wider">${type} DETECTION</span>
+                            <span class="text-white font-mono bg-blue-900/40 px-3 py-1 rounded text-[8px] border border-blue-500/30">${score}% CONFIRMATION</span>
+                        </div>
+                        <div class="flex justify-between mt-3 text-[7px] text-gray-500 font-black uppercase tracking-widest">
+                            <span>TIME: ${time}</span>
+                            <span>IFR: ${rsi.toFixed(2)}</span>
+                        </div>
+                    </div>`;
+                box.innerHTML = html + box.innerHTML;
+            },
+
+            toggle() {
+                this.isAuto = !this.isAuto;
+                const btn = document.getElementById('btn-toggle');
+                const dot = document.getElementById('status-dot');
+                const txt = document.getElementById('status-text');
+                if(this.isAuto) {
+                    btn.innerText = "Parar Sniper";
+                    btn.className = "bg-red-600 text-white border border-red-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-red-900/40";
+                    dot.className = "w-3 h-3 rounded-full bg-green-500 blink shadow-[0_0_12px_rgba(34,197,94,1)]";
+                    txt.innerText = "Sniper Ativo (Analista 95%+)";
+                    txt.className = "text-[11px] font-black text-green-500 uppercase tracking-tighter";
+                } else {
+                    btn.innerText = "Ativar Sniper";
+                    btn.className = "bg-blue-600 text-white border border-blue-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all btn-glow";
+                    dot.className = "w-3 h-3 rounded-full bg-gray-800 border border-gray-700";
+                    txt.innerText = "Sniper Desligado";
+                    txt.className = "text-[11px] font-black text-gray-500 uppercase tracking-tighter";
+                }
+            },
+
+            toggleConfig() {
+                document.getElementById('config-drawer').classList.toggle('open');
+            },
+
+            executeTrade(type) {
+                const stake = document.getElementById('bot-stake').value;
+                this.ws.send(JSON.stringify({
+                    buy: 1, price: parseFloat(stake), subscribe: 1,
+                    parameters: { amount: parseFloat(stake), basis: 'stake', contract_type: type, currency: 'USD', duration: 1, duration_unit: 'm', symbol: 'R_100' }
+                }));
+                this.toggle(); 
+                setTimeout(() => { if(!this.isAuto) this.toggle(); }, 62000);
+            },
+
+            handleContractResult(contract) {
+                if(contract.is_completed) {
+                    const profit = parseFloat(contract.profit);
+                    if(profit > 0) this.stats.wins++; else this.stats.losses++;
+                    this.stats.profit += profit;
+                    document.getElementById('stat-wins').innerText = this.stats.wins;
+                    document.getElementById('stat-losses').innerText = this.stats.losses;
+                    const profitEl = document.getElementById('stat-profit');
+                    profitEl.innerText = `$ ${this.stats.profit.toFixed(2)}`;
+                    profitEl.className = this.stats.profit >= 0 ? 'text-blue-400 text-xs font-black' : 'text-red-500 text-xs font-black';
+                }
+            }
+        };
+    </script>
+</body>
+</html>
