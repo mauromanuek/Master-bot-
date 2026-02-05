@@ -16,10 +16,15 @@
         .score-bar { height: 4px; background: #21262d; border-radius: 2px; overflow: hidden; margin-top: 10px; }
         .score-fill { height: 100%; transition: width 0.5s ease; }
         .stats-badge { background: #161b22; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px; }
-        #config-drawer { transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1); transform: translateY(100%); z-index: 90; position: absolute; bottom: 120px; left: 0; right: 0; }
-        #config-drawer.open { transform: translateY(0); }
+        
+        /* MODAL ANIMATION */
+        #config-modal { transition: opacity 0.3s ease; }
+        .modal-content { transform: scale(0.95); transition: transform 0.3s ease; }
+        #config-modal.flex .modal-content { transform: scale(1); }
+        
         .btn-glow { box-shadow: 0 0 15px rgba(37, 99, 235, 0.2); }
         .btn-glow:hover { box-shadow: 0 0 25px rgba(37, 99, 235, 0.4); }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
 <body class="flex flex-col p-3">
@@ -40,17 +45,41 @@
         </div>
     </div>
 
+    <!-- MODAL DE CONFIGURAÇÃO (POPUP) -->
+    <div id="config-modal" class="hidden fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="panel modal-content w-full max-w-xs p-6 border-blue-500/50 shadow-[0_0_50px_rgba(37,99,235,0.2)]">
+            <div class="flex items-center gap-2 mb-6 border-b border-gray-800 pb-3">
+                <span class="text-blue-500">⚙️</span>
+                <h2 class="text-blue-500 font-black text-xs uppercase tracking-[0.2em]">Risk Management</h2>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[9px] text-gray-500 font-bold uppercase block mb-1">Entrada (Stake USD)</label>
+                    <input id="inp-stake" type="number" step="0.35" value="0.35" class="w-full bg-black border border-gray-800 p-3 rounded text-blue-400 font-black text-xs outline-none focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[9px] text-gray-500 font-bold uppercase block mb-1">Meta (TP $)</label>
+                        <input id="inp-take" type="number" step="1" value="10.00" class="w-full bg-black border border-gray-800 p-3 rounded text-green-500 font-black text-xs outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="text-[9px] text-gray-500 font-bold uppercase block mb-1">Limite (SL $)</label>
+                        <input id="inp-stop" type="number" step="1" value="5.00" class="w-full bg-black border border-gray-800 p-3 rounded text-red-500 font-black text-xs outline-none focus:border-blue-500">
+                    </div>
+                </div>
+                <button onclick="Sniper.saveConfig()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded text-[10px] uppercase transition-all mt-4 shadow-lg">Salvar Configurações</button>
+            </div>
+        </div>
+    </div>
+
     <!-- LOGIN / SETUP -->
     <div id="setup-screen" class="flex-1 flex items-center justify-center">
         <div class="panel p-8 w-full max-w-xs border-b-4 border-blue-600 shadow-2xl">
             <h1 class="text-blue-500 font-black text-center text-xl mb-6 italic tracking-tighter uppercase">Previus Sniper</h1>
             <div class="space-y-4">
                 <input type="password" id="api-token" placeholder="DERIV API TOKEN" class="w-full bg-black border border-gray-800 p-4 rounded text-center text-[10px] text-white outline-none focus:border-blue-500 transition-all">
-                <button onclick="Sniper.init()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded text-[10px] uppercase transition-all shadow-lg shadow-blue-900/30">Inicializar Algoritmo</button>
-            </div>
-            <div class="grid grid-cols-2 gap-2 mt-8 opacity-30">
-                <div class="text-[7px] border border-gray-700 p-1.5 text-center font-mono">CORE_V3.5</div>
-                <div class="text-[7px] border border-gray-700 p-1.5 text-center font-mono">INST_HFT</div>
+                <button onclick="Sniper.init()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded text-[10px] uppercase transition-all shadow-lg">Inicializar Algoritmo</button>
             </div>
         </div>
     </div>
@@ -60,7 +89,7 @@
         <div class="flex justify-between items-center text-[9px] font-bold text-gray-500 px-1">
             <span class="flex items-center gap-2">
                 <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                SISTEMA: <span class="text-blue-400 font-mono">V3.5_STABLE_ACTIVE</span>
+                CORE: <span class="text-blue-400 font-mono">V3.5_INSTITUTIONAL_HFT</span>
             </span>
             <span id="acc-balance" class="text-white bg-gray-900 px-4 py-1.5 rounded-full border border-gray-800 font-black tracking-widest">$ 0.00</span>
         </div>
@@ -68,36 +97,19 @@
         <div class="flex-1 flex flex-col overflow-hidden panel p-4 shadow-2xl">
             <div class="flex justify-between items-center mb-4">
                 <span class="text-[10px] text-blue-500 font-black uppercase tracking-[0.3em] font-mono">> Deep Analysis Log</span>
-                <span id="ai-thinking" class="blink text-[8px] text-yellow-500 font-mono italic">AGUARDANDO CONFLUÊNCIA...</span>
+                <span id="ai-thinking" class="blink text-[8px] text-yellow-500 font-mono italic">CALCULANDO CONFLUÊNCIAS...</span>
             </div>
-            <div id="signal-log" class="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-[10px] scrollbar-hide">
-                <!-- Log Dinâmico -->
-            </div>
+            <div id="signal-log" class="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-[10px] scrollbar-hide"></div>
         </div>
     </div>
 
     <!-- BOT FOOTER CONTROL -->
     <div id="footer-bot" class="hidden footer-fixed flex flex-col justify-center px-6">
-        <!-- CONFIG DRAWER (HIDDEN BY DEFAULT) -->
-        <div id="config-drawer" class="panel mx-4 p-5 bg-[#0d1117] border-blue-500/40 shadow-2xl rounded-b-none border-b-0">
-            <div class="flex flex-col gap-4">
-                <div class="flex justify-between items-center border-b border-gray-800 pb-2">
-                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest">Risk Management</span>
-                    <button onclick="Sniper.toggleConfig()" class="text-gray-500 hover:text-white text-[10px]">✕</button>
-                </div>
-                <div class="flex items-center justify-between">
-                    <label class="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">Stake Amount (USD):</label>
-                    <input id="bot-stake" type="number" step="0.35" value="0.35" class="w-28 bg-black border border-gray-800 text-blue-400 font-black text-xs p-2.5 rounded text-center focus:border-blue-500 outline-none">
-                </div>
-            </div>
-        </div>
-
-        <!-- MAIN ACTION BAR -->
         <div class="flex justify-between items-center h-full">
             <div class="flex flex-col gap-1">
                 <div class="flex items-center gap-2 mb-1">
                     <div id="status-dot" class="w-3 h-3 rounded-full bg-gray-800 border border-gray-700"></div>
-                    <span id="status-text" class="text-[11px] font-black text-gray-500 tracking-tighter uppercase">Sniper Desligado</span>
+                    <span id="status-text" class="text-[11px] font-black text-gray-500 tracking-tighter uppercase">SISTEMA EM STANDBY</span>
                 </div>
                 <div class="flex gap-4 text-[9px] font-bold uppercase tracking-tighter text-gray-600 font-mono">
                     <span>DOW: <b id="f-dow">--</b></span>
@@ -107,16 +119,13 @@
             </div>
 
             <div class="flex items-center gap-3">
-                <!-- BOTÃO ENGRENAGEM -->
                 <button onclick="Sniper.toggleConfig()" class="bg-gray-900 border border-gray-800 p-3.5 rounded-lg hover:bg-gray-800 transition-all group flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 group-hover:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                 </button>
-                
-                <!-- BOTÃO ATIVAR SNIPER -->
-                <button id="btn-toggle" onclick="Sniper.toggle()" class="bg-blue-600 text-white border border-blue-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all btn-glow">Ativar Sniper</button>
+                <button id="btn-toggle" onclick="Sniper.toggle()" class="bg-blue-600 text-white border border-blue-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all btn-glow">Ligar Sniper</button>
             </div>
         </div>
         <div class="score-bar">
@@ -131,6 +140,7 @@
             obv: 0,
             isAuto: false,
             stats: { wins: 0, losses: 0, profit: 0.0 },
+            risk: { stake: 0.35, takeProfit: 10.0, stopLoss: 5.0 },
             token: '',
             pingInterval: null,
 
@@ -160,16 +170,26 @@
                     if(data.msg_type === 'tick') this.processTick(data.tick.quote);
                     if(data.msg_type === 'proposal_open_contract') this.handleContractResult(data.proposal_open_contract);
                 };
-                this.ws.onclose = () => {
-                    clearInterval(this.pingInterval);
-                    setTimeout(() => this.connect(), 5000);
-                };
+                this.ws.onclose = () => { clearInterval(this.pingInterval); setTimeout(() => this.connect(), 5000); };
             },
 
             startHeartbeat() {
                 this.pingInterval = setInterval(() => {
                     if(this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ ping: 1 }));
                 }, 30000);
+            },
+
+            saveConfig() {
+                this.risk.stake = parseFloat(document.getElementById('inp-stake').value);
+                this.risk.takeProfit = parseFloat(document.getElementById('inp-take').value);
+                this.risk.stopLoss = parseFloat(document.getElementById('inp-stop').value);
+                this.toggleConfig();
+            },
+
+            toggleConfig() {
+                const modal = document.getElementById('config-modal');
+                modal.classList.toggle('hidden');
+                modal.classList.toggle('flex');
             },
 
             processTick(price) {
@@ -197,9 +217,7 @@
                 const upBand = sma20 + (dev * 2);
                 const lowBand = sma20 - (dev * 2);
 
-                let callScore = 0;
-                let putScore = 0;
-
+                let callScore = 0, putScore = 0;
                 if(last > sma200) callScore += 30; else putScore += 30;
                 if(rsi < 30) callScore += 30; if(rsi > 70) putScore += 30;
                 if(last <= lowBand) callScore += 20; if(last >= upBand) putScore += 20;
@@ -212,15 +230,14 @@
                 document.getElementById('f-dow').className = last > sma200 ? 'text-green-500' : 'text-red-500';
                 document.getElementById('f-rsi').innerText = rsi.toFixed(0);
                 document.getElementById('f-bb').innerText = (last >= upBand || last <= lowBand) ? 'EXTREMO' : 'NORMAL';
+                
                 document.getElementById('score-fill').style.width = finalScore + '%';
-                document.getElementById('score-fill').className = `score-fill ${finalScore > 85 ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.6)]' : 'bg-blue-500'}`;
+                document.getElementById('score-fill').className = `score-fill ${finalScore > 85 ? 'bg-green-500' : 'bg-blue-500'}`;
 
                 if(finalScore >= 75) this.logSignal(finalAction, finalScore, rsi);
                 
-                // LÓGICA DE EXECUÇÃO RESTRITA A 95% OU MAIS
-                if(this.isAuto && finalScore >= 95) {
-                    this.executeTrade(finalAction);
-                }
+                // CRÍTICO: SÓ ENTRA EM MODO AUTO COM 95% OU MAIS
+                if(this.isAuto && finalScore >= 95) this.executeTrade(finalAction);
             },
 
             logSignal(type, score, rsi) {
@@ -228,52 +245,59 @@
                 const time = new Date().toLocaleTimeString();
                 const id = `sig-${time.replace(/:/g,'')}`;
                 if(document.getElementById(id)) return;
-                const html = `
-                    <div id="${id}" class="p-4 rounded border border-gray-800 ${type === 'CALL' ? 'win-log' : 'loss-log'} transition-all hover:border-gray-600">
+                box.innerHTML = `
+                    <div id="${id}" class="p-4 rounded border border-gray-800 ${type === 'CALL' ? 'win-log' : 'loss-log'} animate-in slide-in-from-right duration-300">
                         <div class="flex justify-between items-center">
-                            <span class="${type === 'CALL' ? 'text-green-500' : 'text-red-500'} font-black text-xs italic underline tracking-wider">${type} DETECTION</span>
-                            <span class="text-white font-mono bg-blue-900/40 px-3 py-1 rounded text-[8px] border border-blue-500/30">${score}% CONFIRMATION</span>
+                            <span class="${type === 'CALL' ? 'text-green-500' : 'text-red-500'} font-black text-xs italic underline">${type} DETECTADO</span>
+                            <span class="text-white font-mono bg-blue-900/40 px-3 py-1 rounded text-[8px]">${score}% SCORE</span>
                         </div>
-                        <div class="flex justify-between mt-3 text-[7px] text-gray-500 font-black uppercase tracking-widest">
+                        <div class="flex justify-between mt-3 text-[7px] text-gray-500 font-black uppercase">
                             <span>TIME: ${time}</span>
-                            <span>IFR: ${rsi.toFixed(2)}</span>
+                            <span>INDEX: ${rsi.toFixed(2)}</span>
                         </div>
-                    </div>`;
-                box.innerHTML = html + box.innerHTML;
+                    </div>` + box.innerHTML;
             },
 
             toggle() {
+                // Checar se já bateu meta ou loss antes de ligar
+                if(!this.isAuto && (this.stats.profit >= this.risk.takeProfit || this.stats.profit <= -this.risk.stopLoss)) {
+                    alert("Limites atingidos. Reinicie as estatísticas para continuar.");
+                    return;
+                }
+
                 this.isAuto = !this.isAuto;
                 const btn = document.getElementById('btn-toggle');
                 const dot = document.getElementById('status-dot');
                 const txt = document.getElementById('status-text');
+
                 if(this.isAuto) {
-                    btn.innerText = "Parar Sniper";
-                    btn.className = "bg-red-600 text-white border border-red-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-red-900/40";
+                    btn.innerText = "PARAR SNIPER";
+                    btn.className = "bg-red-600 text-white border border-red-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase transition-all shadow-lg shadow-red-900/40";
                     dot.className = "w-3 h-3 rounded-full bg-green-500 blink shadow-[0_0_12px_rgba(34,197,94,1)]";
-                    txt.innerText = "Sniper Ativo (Analista 95%+)";
+                    txt.innerText = "SISTEMA OPERANDO (95%+)";
                     txt.className = "text-[11px] font-black text-green-500 uppercase tracking-tighter";
                 } else {
-                    btn.innerText = "Ativar Sniper";
-                    btn.className = "bg-blue-600 text-white border border-blue-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all btn-glow";
+                    btn.innerText = "LIGAR SNIPER";
+                    btn.className = "bg-blue-600 text-white border border-blue-400 px-12 py-4 rounded-lg font-black text-[10px] uppercase transition-all btn-glow";
                     dot.className = "w-3 h-3 rounded-full bg-gray-800 border border-gray-700";
-                    txt.innerText = "Sniper Desligado";
+                    txt.innerText = "SISTEMA EM STANDBY";
                     txt.className = "text-[11px] font-black text-gray-500 uppercase tracking-tighter";
                 }
             },
 
-            toggleConfig() {
-                document.getElementById('config-drawer').classList.toggle('open');
-            },
-
             executeTrade(type) {
-                const stake = document.getElementById('bot-stake').value;
+                if(this.stats.profit >= this.risk.takeProfit || this.stats.profit <= -this.risk.stopLoss) {
+                    if(this.isAuto) this.toggle();
+                    return;
+                }
+
                 this.ws.send(JSON.stringify({
-                    buy: 1, price: parseFloat(stake), subscribe: 1,
-                    parameters: { amount: parseFloat(stake), basis: 'stake', contract_type: type, currency: 'USD', duration: 1, duration_unit: 'm', symbol: 'R_100' }
+                    buy: 1, price: this.risk.stake, subscribe: 1,
+                    parameters: { amount: this.risk.stake, basis: 'stake', contract_type: type, currency: 'USD', duration: 1, duration_unit: 'm', symbol: 'R_100' }
                 }));
+                
                 this.toggle(); 
-                setTimeout(() => { if(!this.isAuto) this.toggle(); }, 62000);
+                setTimeout(() => { if(!this.isAuto) this.toggle(); }, 65000);
             },
 
             handleContractResult(contract) {
@@ -281,11 +305,17 @@
                     const profit = parseFloat(contract.profit);
                     if(profit > 0) this.stats.wins++; else this.stats.losses++;
                     this.stats.profit += profit;
+                    
                     document.getElementById('stat-wins').innerText = this.stats.wins;
                     document.getElementById('stat-losses').innerText = this.stats.losses;
                     const profitEl = document.getElementById('stat-profit');
                     profitEl.innerText = `$ ${this.stats.profit.toFixed(2)}`;
                     profitEl.className = this.stats.profit >= 0 ? 'text-blue-400 text-xs font-black' : 'text-red-500 text-xs font-black';
+
+                    // Verificação de segurança (Auto-Stop)
+                    if(this.stats.profit >= this.risk.takeProfit || this.stats.profit <= -this.risk.stopLoss) {
+                        if(this.isAuto) this.toggle();
+                    }
                 }
             }
         };
