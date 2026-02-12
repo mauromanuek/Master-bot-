@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PREVIUS SNIPER v4.2 | WakeLock Stable</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #020408; color: #8b949e; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; }
+        .footer-fixed { position: fixed; bottom: 0; left: 0; right: 0; background: #010409; border-top: 2px solid #21262d; height: 110px; }
+        
+        /* Cores de Log para CALL/PUT */
+        .call-log { border-left: 4px solid #238636; background: rgba(35, 134, 54, 0.1); }
+        .put-log { border-left: 4px solid #da3633; background: rgba(218, 54, 51, 0.1); }
+        .system-log { border-left: 4px solid #8b949e; background: rgba(139, 148, 158, 0.1); }
+        
+        .blink { animation: blinker 1.5s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0.3; } }
+        
+        /* Barra Inferior (Resumo) */
+        .score-bar { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; position: relative; }
+        .score-fill { height: 100%; transition: width 0.5s ease, background-color 0.5s ease; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-3">
+
+    <!-- TELA DE LOGIN -->
+    <div id="setup-screen" class="flex-1 flex items-center justify-center">
+        <div class="panel p-6 w-full max-w-xs border-b-4 border-blue-600 shadow-2xl">
+            <h1 class="text-blue-500 font-black text-center text-sm mb-4 italic tracking-tighter">PREVIUS SNIPER v4.2</h1>
+            <input type="password" id="api-token" placeholder="API TOKEN DERIV" class="w-full bg-black border border-gray-800 p-2.5 rounded text-center text-[10px] text-white outline-none focus:border-blue-500">
+            <button onclick="Sniper.init()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded text-[10px] uppercase transition-all mt-4">Iniciar Conexão</button>
+            
+            <div class="flex justify-between mt-4 px-2">
+                <span class="text-[7px] text-gray-600">WAKE_LOCK: <span class="text-green-500">READY</span></span>
+                <span class="text-[7px] text-gray-600">WS: <span class="text-blue-500">SECURE</span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- TERMINAL PRINCIPAL -->
+    <div id="main-terminal" class="hidden flex-1 flex flex-col gap-2 pb-32">
+        
+        <!-- CABEÇALHO: CONTROLE DE PERMISSÃO (AUTO ON/OFF) -->
+        <div class="flex justify-between items-center bg-[#0d1117] p-2 rounded border border-gray-800">
+            <div class="flex flex-col">
+                <span class="text-[9px] font-bold text-gray-500">STATUS: <span id="connection-status" class="text-yellow-500 blink">CONECTANDO...</span></span>
+                <span id="acc-balance" class="text-white font-bold text-xs mt-0.5">$ 0.00</span>
+            </div>
+            
+            <!-- BOTÃO AUTO ON/OFF (Permissão) -->
+            <button id="btn-master-auto" onclick="Sniper.toggleAutoPermission()" class="bg-gray-800 text-gray-400 border border-gray-600 px-4 py-1.5 rounded text-[10px] font-black uppercase transition-all hover:bg-gray-700">
+                AUTO: OFF
+            </button>
+        </div>
+
+        <!-- ESTATÍSTICAS RÁPIDAS -->
+        <div class="flex gap-2 mb-1 px-1 border-b border-gray-800/50 pb-2">
+            <div class="bg-gray-900/50 px-2 py-1 rounded flex-1 text-center border border-gray-800">
+                <span class="text-[7px] text-gray-500 block">WIN</span>
+                <span id="stat-wins" class="text-green-500 text-[10px] font-black">0</span>
+            </div>
+            <div class="bg-gray-900/50 px-2 py-1 rounded flex-1 text-center border border-gray-800">
+                <span class="text-[7px] text-gray-500 block">LOSS</span>
+                <span id="stat-losses" class="text-red-500 text-[10px] font-black">0</span>
+            </div>
+            <div class="bg-gray-900/50 px-2 py-1 rounded flex-[1.5] text-center border border-gray-800">
+                <span class="text-[7px] text-gray-500 block">RESULTADO</span>
+                <span id="stat-net" class="text-blue-400 text-[10px] font-black">$ 0.00</span>
+            </div>
+            <!-- Botão Limpar -->
+            <button onclick="Sniper.clearLogs()" class="text-gray-600 hover:text-white px-2">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
+        </div>
+
+        <!-- ÁREA DE LOGS (PRINCIPAL) -->
+        <div class="flex-1 flex flex-col overflow-hidden panel relative">
+            <div class="bg-[#0b0e14] p-1.5 border-b border-gray-800 flex justify-between items-center z-10">
+                <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest">>> REGISTRO DE SINAIS</span>
+                <span id="market-pulse" class="text-[8px] text-gray-600">Aguardando dados...</span>
+            </div>
+            
+            <div id="signal-log" class="flex-1 overflow-y-auto p-2 space-y-1.5 font-mono text-[10px]">
+                <!-- Sinais serão injetados aqui via JS -->
+                <div class="p-2 rounded system-log text-gray-500 text-center italic text-[9px]">
+                    O sistema está pronto. Aguardando mercado...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RODAPÉ: RESUMO & CONTROLES TÉCNICOS -->
+    <div id="footer-bot" class="hidden footer-fixed flex flex-col justify-center px-4 py-2">
+        
+        <!-- Linha Superior do Rodapé (Resumo Técnico) -->
+        <div class="flex justify-between items-end mb-2">
+            <div class="flex flex-col">
+                <div class="flex items-center gap-2 mb-1">
+                    <div id="status-dot" class="w-2 h-2 rounded-full bg-gray-700"></div>
+                    <span id="status-text" class="text-[9px] font-bold text-gray-500">STANDBY</span>
+                </div>
+                <!-- Resumo Estatístico -->
+                <div class="flex gap-3 text-[8px] font-bold text-gray-600">
+                    <span>TICKS: <b id="f-tick-score" class="text-gray-400">0%</b></span>
+                    <span>VELAS: <b id="f-candle-score" class="text-gray-400">0%</b></span>
+                </div>
+            </div>
+            
+            <div class="flex gap-2 items-center">
+                <div class="text-center">
+                    <span class="text-[7px] text-gray-600 font-bold block mb-0.5 uppercase">Stake</span>
+                    <input id="bot-stake" type="number" value="0.35" class="w-12 bg-black border border-gray-800 text-blue-400 font-bold text-[10px] p-1 rounded text-center outline-none">
+                </div>
+                <button onclick="Sniper.toggleModal(true)" class="bg-gray-800 border border-gray-700 w-8 h-8 rounded flex items-center justify-center hover:bg-gray-700">
+                    <span class="text-xs">⚙️</span>
+                </button>
+                <button id="btn-toggle" onclick="Sniper.toggle()" class="bg-blue-900/30 text-blue-400 border border-blue-500/50 px-4 h-8 rounded font-bold text-[9px] hover:bg-blue-600 hover:text-white transition-all">
+                    LIGAR SISTEMA
+                </button>
+            </div>
+        </div>
+        
+        <!-- Barra de Termômetro (Apenas Visual) -->
+        <div class="flex justify-between text-[7px] text-gray-600 mb-1 px-1 uppercase font-bold tracking-wider">
+            <span>Força Vendedora (PUT)</span>
+            <span>Força Compradora (CALL)</span>
+        </div>
+        <div class="score-bar">
+            <!-- Marcador central -->
+            <div class="absolute left-1/2 w-0.5 h-full bg-black/50 transform -translate-x-1/2 z-20"></div>
+            <div id="score-fill" class="score-fill bg-blue-500 w-0 mx-auto"></div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIGURAÇÕES -->
+    <div id="modal-settings" class="hidden fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="panel p-6 w-full max-w-xs border-t-4 border-blue-500 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-blue-500 font-black text-[10px] uppercase tracking-widest">Gestão de Risco</h2>
+                <button onclick="Sniper.toggleModal(false)" class="text-gray-500 hover:text-white">✕</button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[8px] text-gray-500 block mb-1 uppercase font-bold">Take Profit ($)</label>
+                    <input id="risk-tp" type="number" value="10.00" class="w-full bg-black border border-gray-800 p-2 rounded text-[11px] text-green-500 font-bold outline-none">
+                </div>
+                <div>
+                    <label class="text-[8px] text-gray-500 block mb-1 uppercase font-bold">Stop Loss ($)</label>
+                    <input id="risk-sl" type="number" value="5.00" class="w-full bg-black border border-gray-800 p-2 rounded text-[11px] text-red-500 font-bold outline-none">
+                </div>
+                <div class="pt-2 border-t border-gray-800">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="chk-reversion" checked class="form-checkbox h-3 w-3 text-blue-600 bg-black border-gray-800 rounded">
+                        <span class="text-[9px] text-gray-400">Proteção de Reversão (Saída Antecipada)</span>
+                    </label>
+                </div>
+            </div>
+            <button onclick="Sniper.toggleModal(false)" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-2 rounded text-[9px] uppercase mt-6">Salvar</button>
+        </div>
+    </div>
+
+    <script>
+        const Sniper = {
+            ws: null,
+            ticks: [],
+            candles: [],
+            activeTrade: null,
+            
+            // Controle de Estado
+            isSystemActive: false, // Botão Inferior (Ligar Sistema)
+            autoPermission: false, // Botão Superior (Auto ON/OFF)
+            
+            // Dados de Mercado
+            obv: 0,
+            
+            // Wake Lock
+            wakeLock: null,
+            
+            // Controle de Logs (Debounce)
+            lastLogTime: 0,
+
+            // Stats
+            stats: { wins: 0, losses: 0, net: 0 },
+            risk: { tp: 10, sl: 5, reversionProtection: true },
+            weights: { ticks: 0.6, candles: 0.4 },
+            learning: { consecutiveLosses: 0 },
+
+            async init() {
+                const token = document.getElementById('api-token').value;
+                if(!token) return;
+                
+                // Configura Listeners de WakeLock antes de tudo
+                this.setupWakeLock();
+
+                this.ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
+                
+                this.ws.onopen = () => {
+                    this.ws.send(JSON.stringify({ authorize: token }));
+                    document.getElementById('connection-status').innerText = "AUTORIZANDO...";
+                };
+                
+                this.ws.onmessage = (msg) => {
+                    const data = JSON.parse(msg.data);
+                    this.handleMessage(data);
+                };
+                
+                this.ws.onclose = () => {
+                    document.getElementById('connection-status').innerText = "DESCONECTADO";
+                    document.getElementById('connection-status').className = "text-red-500 blink";
+                };
+            },
+            
+            // --- 3. WAKE LOCK ROBUSTO ---
+            async requestWakeLock() {
+                try {
+                    this.wakeLock = await navigator.wakeLock.request('screen');
+                    this.wakeLock.addEventListener('release', () => {
+                        console.log('Wake Lock Solto');
+                    });
+                    console.log('Wake Lock Ativo');
+                } catch (err) {
+                    console.error(`${err.name}, ${err.message}`);
+                }
+            },
+
+            setupWakeLock() {
+                // Tenta ativar ao iniciar
+                this.requestWakeLock();
+                
+                // Reativa se a visibilidade mudar (usuário voltou para a aba)
+                document.addEventListener('visibilitychange', async () => {
+                    if (this.wakeLock !== null && document.visibilityState === 'visible') {
+                        await this.requestWakeLock();
+                    }
+                });
+            },
+            // ---------------------------
+
+            handleMessage(data) {
+                if(data.msg_type === 'authorize' && !data.error) {
+                    this.setupUI();
+                    this.ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+                    this.ws.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
+                    this.ws.send(JSON.stringify({ ticks: 'R_100', subscribe: 1 }));
+                    this.ws.send(JSON.stringify({ ticks_history: 'R_100', end: 'latest', style: 'candles', granularity: 60, count: 50, subscribe: 1 }));
+                    this.updateRiskParams();
+                    document.getElementById('connection-status').innerText = "CONECTADO";
+                    document.getElementById('connection-status').className = "text-green-500 font-bold";
+                }
+
+                if(data.msg_type === 'buy') {
+                    if(!data.error && this.activeTrade) {
+                        this.activeTrade.contract_id = data.buy.contract_id;
+                        this.logSignal("SISTEMA", 100, `ORDEM EXECUTADA: ID ${data.buy.contract_id}`);
+                    }
+                }
+
+                if(data.msg_type === 'balance') {
+                    document.getElementById('acc-balance').innerText = `$ ${data.balance.balance.toFixed(2)}`;
+                }
+                
+                if(data.msg_type === 'tick') {
+                    this.processTick(data.tick.quote);
+                }
+                
+                if(data.msg_type === 'ohlc') {
+                    this.processCandle(data.ohlc);
+                }
+                
+                if(data.msg_type === 'proposal_open_contract') {
+                    this.monitorActiveTrade(data.proposal_open_contract);
+                }
+            },
+
+            setupUI() {
+                document.getElementById('setup-screen').classList.add('hidden');
+                document.getElementById('main-terminal').classList.remove('hidden');
+                document.getElementById('footer-bot').classList.remove('hidden');
+            },
+
+            updateRiskParams() {
+                this.risk.tp = parseFloat(document.getElementById('risk-tp').value) || 10;
+                this.risk.sl = parseFloat(document.getElementById('risk-sl').value) || 5;
+                this.risk.reversionProtection = document.getElementById('chk-reversion').checked;
+            },
+            
+            toggleAutoPermission() {
+                this.autoPermission = !this.autoPermission;
+                const btn = document.getElementById('btn-master-auto');
+                if(this.autoPermission) {
+                    btn.innerText = "AUTO: ON";
+                    btn.className = "bg-green-900/50 text-green-400 border border-green-500 px-4 py-1.5 rounded text-[10px] font-black uppercase transition-all shadow-[0_0_10px_rgba(74,222,128,0.2)]";
+                } else {
+                    btn.innerText = "AUTO: OFF";
+                    btn.className = "bg-gray-800 text-gray-400 border border-gray-600 px-4 py-1.5 rounded text-[10px] font-black uppercase transition-all hover:bg-gray-700";
+                }
+            },
+
+            // --- LÓGICA DE ANÁLISE ---
+            processTick(price) {
+                const p = parseFloat(price);
+                if (this.ticks.length > 0) {
+                    const prev = this.ticks[this.ticks.length - 1];
+                    this.obv += (p > prev) ? 1 : (p < prev ? -1 : 0);
+                }
+                this.ticks.push(p);
+                if(this.ticks.length > 300) this.ticks.shift(); 
+                
+                if(this.ticks.length >= 200 && this.candles.length >= 5) {
+                    this.analyzeHybrid();
+                }
+                
+                // Batimento cardíaco visual
+                document.getElementById('market-pulse').innerText = `Tick: ${p.toFixed(2)}`;
+            },
+
+            processCandle(candle) {
+                const lastCandle = this.candles[this.candles.length - 1];
+                if (lastCandle && lastCandle.epoch === candle.epoch) {
+                    this.candles[this.candles.length - 1] = candle; 
+                } else {
+                    this.candles.push(candle); 
+                    if (this.candles.length > 50) this.candles.shift();
+                    
+                    if(this.learning.consecutiveLosses > 2) {
+                        this.weights.ticks = 0.6; 
+                        this.weights.candles = 0.4;
+                        this.learning.consecutiveLosses = 0;
+                    }
+                }
+            },
+
+            analyzeHybrid() {
+                const tickAnalysis = this.getTickAnalysis();
+                const candleAnalysis = this.getCandleAnalysis();
+
+                let finalScore = 0;
+                let direction = 'NEUTRO';
+
+                if (tickAnalysis.direction === candleAnalysis.direction) {
+                    finalScore = (tickAnalysis.score * this.weights.ticks) + (candleAnalysis.score * this.weights.candles);
+                    direction = tickAnalysis.direction;
+                } else {
+                    const weightedTick = tickAnalysis.score * this.weights.ticks;
+                    const weightedCandle = candleAnalysis.score * this.weights.candles;
+                    
+                    if(weightedTick > weightedCandle) {
+                        finalScore = weightedTick - (weightedCandle * 0.5); 
+                        direction = tickAnalysis.direction;
+                    } else {
+                        finalScore = weightedCandle - (weightedTick * 0.5);
+                        direction = candleAnalysis.direction;
+                    }
+                }
+
+                // Atualiza UI (Termômetro)
+                this.updateAnalysisUI(tickAnalysis, candleAnalysis, finalScore, direction);
+
+                // --- 1. REGISTRO NO LOG (Principal) ---
+                // Registra se o score for relevante (> 70%) para mostrar atividade
+                // Usa debounce de 2 segundos para não floodar o log
+                if (finalScore >= 70) {
+                    const now = Date.now();
+                    if (now - this.lastLogTime > 2000) {
+                        this.logSignal(direction, finalScore, "ANÁLISE HÍBRIDA (TICK+VELA)");
+                        this.lastLogTime = now;
+                    }
+                }
+
+                // --- 2. EXECUÇÃO AUTOMÁTICA ---
+                // Requisitos: Sistema Ativo + Auto ON + Score >= 95% + Sem Trade Ativo
+                if (this.isSystemActive && this.autoPermission && finalScore >= 95 && !this.activeTrade) {
+                    this.attemptAutoTrade(direction, finalScore);
+                }
+            },
+
+            getTickAnalysis() {
+                const p = this.ticks;
+                const last = p[p.length - 1];
+                const sma200 = p.slice(-200).reduce((a,b)=>a+b)/200;
+                const sma20 = p.slice(-20).reduce((a,b)=>a+b)/20;
+                
+                let g = 0, l = 0;
+                for(let i = p.length - 14; i < p.length; i++){
+                    let d = p[i] - p[i-1]; d > 0 ? g += d : l -= d;
+                }
+                const rsi = 100 - (100 / (1 + (g / (l || 1))));
+
+                const dev = Math.sqrt(p.slice(-20).map(x => Math.pow(x - sma20, 2)).reduce((a, b) => a + b) / 20);
+                const upBand = sma20 + (dev * 2);
+                const lowBand = sma20 - (dev * 2);
+
+                let callScore = 0, putScore = 0;
+                if(last > sma200) callScore += 30; else putScore += 30;
+                if(rsi < 25) callScore += 35; if(rsi > 75) putScore += 35;
+                if(this.obv > 5) callScore += 20; if(this.obv < -5) putScore += 20;
+                if(last <= lowBand) callScore += 15; if(last >= upBand) putScore += 15;
+
+                return { direction: callScore > putScore ? 'CALL' : 'PUT', score: Math.max(callScore, putScore) };
+            },
+
+            getCandleAnalysis() {
+                const history = this.candles.slice(-4, -1); 
+                if(history.length < 3) return { direction: 'NEUTRO', score: 0 };
+                let score = 50; let bulls = 0, bears = 0;
+                history.forEach(c => { if(c.close > c.open) bulls++; else bears++; });
+                const closes = this.candles.slice(-20).map(c => parseFloat(c.close));
+                const emaCandle = closes.reduce((a,b)=>a+b)/closes.length;
+                const lastClose = parseFloat(this.candles[this.candles.length-1].close);
+                let direction = lastClose > emaCandle ? 'CALL' : 'PUT';
+                if(bulls === 3) { score += 30; direction = 'CALL'; }
+                if(bears === 3) { score += 30; direction = 'PUT'; }
+                return { direction: direction, score: Math.min(score, 100) };
+            },
+
+            updateAnalysisUI(tick, candle, total, dir) {
+                // Barra Inferior (Termômetro Visual)
+                const bar = document.getElementById('score-fill');
+                bar.style.width = `${total}%`;
+                // Cor da barra e alinhamento visual
+                if(dir === 'CALL') {
+                    bar.className = `score-fill bg-green-500`; // Esquerda para Direita (default)
+                } else {
+                    bar.className = `score-fill bg-red-500`; 
+                }
+                
+                // Resumo Numérico
+                document.getElementById('f-tick-score').innerText = `${tick.score.toFixed(0)}%`;
+                document.getElementById('f-candle-score').innerText = `${candle.score.toFixed(0)}%`;
+            },
+
+            // --- 1. APRESENTAÇÃO DOS SINAIS (LOG) ---
+            logSignal(type, score, context) {
+                const box = document.getElementById('signal-log');
+                const time = new Date().toLocaleTimeString();
+                
+                let cssClass = 'system-log';
+                if(type === 'CALL') cssClass = 'call-log';
+                if(type === 'PUT') cssClass = 'put-log';
+
+                // Ícones
+                const icon = type === 'CALL' ? '🟢' : (type === 'PUT' ? '🔴' : '⚪');
+
+                const html = `
+                    <div class="p-2 mb-1 rounded ${cssClass} flex flex-col gap-1">
+                        <div class="flex justify-between items-center font-black text-[10px]">
+                            <span class="${type === 'CALL' ? 'text-green-400' : (type === 'PUT' ? 'text-red-400' : 'text-gray-400')}">
+                                ${icon} ${type} <span class="text-xs opacity-80">${score.toFixed(1)}%</span>
+                            </span>
+                            <span class="text-gray-500 text-[9px]">${time}</span>
+                        </div>
+                        <div class="text-[8px] text-gray-500 uppercase tracking-tight">
+                            ${context}
+                        </div>
+                    </div>
+                `;
+                
+                // Insere no TOPO
+                box.insertAdjacentHTML('afterbegin', html);
+                
+                // Limite de 50 itens
+                if(box.children.length > 50) box.lastElementChild.remove();
+            },
+            
+            clearLogs() {
+                document.getElementById('signal-log').innerHTML = '<div class="p-2 text-center text-[9px] text-gray-600 italic">Logs limpos.</div>';
+            },
+
+            // --- TRADING & GESTÃO ---
+            monitorActiveTrade(contract) {
+                if(!this.activeTrade || !this.activeTrade.contract_id) return;
+                if(this.activeTrade.contract_id !== contract.contract_id) return;
+
+                if(contract.is_sold) {
+                    this.activeTrade = null;
+                    this.updateStatsUI(contract.profit);
+                    const profit = parseFloat(contract.profit);
+                    this.logSignal(profit >= 0 ? "WIN" : "LOSS", 100, `LUCRO: $${profit.toFixed(2)}`);
+                    
+                    if(profit < 0) this.learning.consecutiveLosses++;
+                    else this.learning.consecutiveLosses = 0;
+                    return;
+                }
+
+                const currentProfit = parseFloat(contract.profit);
+                let shouldSell = false; let reason = "";
+
+                if(currentProfit >= this.risk.tp) { shouldSell = true; reason = "TAKE PROFIT"; }
+                if(currentProfit <= -this.risk.sl) { shouldSell = true; reason = "STOP LOSS"; }
+
+                if(this.risk.reversionProtection && !shouldSell) {
+                    const tickAnalysis = this.getTickAnalysis();
+                    if(this.activeTrade.type === 'CALL' && tickAnalysis.direction === 'PUT' && tickAnalysis.score > 80) {
+                        shouldSell = true; reason = "REVERSÃO";
+                    }
+                    if(this.activeTrade.type === 'PUT' && tickAnalysis.direction === 'CALL' && tickAnalysis.score > 80) {
+                        shouldSell = true; reason = "REVERSÃO";
+                    }
+                }
+
+                if(shouldSell) {
+                    this.ws.send(JSON.stringify({ sell: contract.contract_id, price: 0 })); 
+                    this.logSignal("SAÍDA", 100, `PROTEÇÃO: ${reason}`);
+                }
+            },
+
+            attemptAutoTrade(direction, score) {
+                const isUnderLimits = (this.stats.net < this.risk.tp || this.risk.tp === 0) && (this.stats.net > -this.risk.sl || this.risk.sl === 0);
+                
+                if(!isUnderLimits) {
+                    this.toggle(); 
+                    alert("LIMITE FINANCEIRO ATINGIDO.");
+                    return;
+                }
+
+                this.logSignal("AUTO-ENTRY", score, `EXECUTANDO ORDEM ${direction}`);
+                this.executeTrade(direction);
+            },
+
+            executeTrade(type) {
+                const stake = document.getElementById('bot-stake').value;
+                this.activeTrade = { type: type, contract_id: null, startTime: Date.now() };
+
+                this.ws.send(JSON.stringify({
+                    buy: 1, subscribe: 1, price: parseFloat(stake),
+                    parameters: { amount: parseFloat(stake), basis: 'stake', contract_type: type, currency: 'USD', duration: 1, duration_unit: 'm', symbol: 'R_100' }
+                }));
+            },
+
+            updateStatsUI(profit) {
+                const p = parseFloat(profit);
+                if (p > 0) this.stats.wins++; else if (p < 0) this.stats.losses++;
+                this.stats.net += p;
+                document.getElementById('stat-wins').innerText = this.stats.wins;
+                document.getElementById('stat-losses').innerText = this.stats.losses;
+                const netEl = document.getElementById('stat-net');
+                netEl.innerText = `${this.stats.net >= 0 ? '$' : '-$'} ${Math.abs(this.stats.net).toFixed(2)}`;
+                netEl.className = `text-[10px] font-black italic ${this.stats.net >= 0 ? 'text-blue-400' : 'text-red-500'}`;
+            },
+
+            toggle() {
+                this.isSystemActive = !this.isSystemActive;
+                this.toggleUIState();
+                this.updateRiskParams();
+            },
+            
+            toggleUIState() {
+                const btn = document.getElementById('btn-toggle');
+                const dot = document.getElementById('status-dot');
+                const txt = document.getElementById('status-text');
+
+                if(this.isSystemActive) {
+                    btn.innerText = "SISTEMA ARMADO";
+                    btn.className = "bg-red-900/50 text-red-400 border border-red-500 px-4 h-8 rounded font-bold text-[9px]";
+                    dot.className = "w-2 h-2 rounded-full bg-green-500 blink";
+                    txt.innerText = "ANALISANDO...";
+                    txt.className = "text-[9px] font-bold text-green-500";
+                } else {
+                    btn.innerText = "LIGAR SISTEMA";
+                    btn.className = "bg-blue-900/30 text-blue-400 border border-blue-500/50 px-4 h-8 rounded font-bold text-[9px] hover:bg-blue-600 hover:text-white transition-all";
+                    dot.className = "w-2 h-2 rounded-full bg-gray-700";
+                    txt.innerText = "STANDBY";
+                    txt.className = "text-[9px] font-bold text-gray-500";
+                }
+            },
+
+            toggleModal(show) {
+                document.getElementById('modal-settings').classList.toggle('hidden', !show);
+            }
+        };
+    </script>
+</body>
+</html>
