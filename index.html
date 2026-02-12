@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PREVIUS SNIPER v5.0 | Institutional Core</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #020408; color: #8b949e; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .panel { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; }
+        .footer-fixed { position: fixed; bottom: 0; left: 0; right: 0; background: #010409; border-top: 2px solid #21262d; height: 120px; }
+        
+        /* Logs */
+        .log-item { border-left: 3px solid #30363d; background: rgba(22, 27, 34, 0.5); font-size: 10px; margin-bottom: 4px; padding: 6px; border-radius: 4px; }
+        .log-call { border-left-color: #238636; background: rgba(35, 134, 54, 0.08); }
+        .log-put { border-left-color: #da3633; background: rgba(218, 54, 51, 0.08); }
+        .log-info { border-left-color: #2f81f7; background: rgba(47, 129, 247, 0.08); }
+        .log-warn { border-left-color: #d29922; background: rgba(210, 153, 34, 0.08); }
+
+        .blink { animation: blinker 2s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0.4; } }
+        
+        /* Barra de Força */
+        .strength-bar-bg { height: 4px; background: #21262d; width: 100%; border-radius: 2px; overflow: hidden; margin-top: 2px; }
+        .strength-bar-fill { height: 100%; transition: width 0.4s ease, background-color 0.4s ease; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col p-3">
+
+    <!-- LOGIN -->
+    <div id="setup-screen" class="flex-1 flex items-center justify-center">
+        <div class="panel p-6 w-full max-w-xs border-b-4 border-blue-600 shadow-2xl relative">
+            <div class="absolute -top-3 -right-3 bg-blue-600 text-white text-[9px] font-bold px-2 py-1 rounded shadow">V5.0 PRO</div>
+            <h1 class="text-blue-500 font-black text-center text-sm mb-4 tracking-tighter">PREVIUS INSTITUTIONAL</h1>
+            <input type="password" id="api-token" placeholder="API TOKEN DERIV" class="w-full bg-black border border-gray-800 p-3 rounded text-center text-xs text-white outline-none focus:border-blue-500 transition-colors">
+            <button onclick="Core.init()" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded text-xs uppercase transition-all mt-4 shadow-lg shadow-blue-900/20">Iniciar Motor de Análise</button>
+        </div>
+    </div>
+
+    <!-- TERMINAL -->
+    <div id="main-terminal" class="hidden flex-1 flex flex-col gap-2 pb-36">
+        
+        <!-- HEADER / CONTEXTO -->
+        <div class="flex justify-between items-stretch bg-[#0d1117] p-2 rounded border border-gray-800 gap-2">
+            <div class="flex flex-col justify-center">
+                <span class="text-[8px] font-bold text-gray-500 uppercase">Status Conexão</span>
+                <span id="connection-status" class="text-[10px] font-bold text-yellow-500 blink">CONECTANDO...</span>
+                <span id="acc-balance" class="text-white font-bold text-xs mt-1">$ 0.00</span>
+            </div>
+            
+            <!-- Painel de Contexto de Mercado -->
+            <div class="flex-1 bg-black/40 border border-gray-800 rounded p-1.5 flex flex-col justify-center items-center">
+                <span class="text-[7px] text-gray-500 uppercase tracking-wider mb-0.5">Contexto de Mercado</span>
+                <span id="market-context" class="text-[9px] font-black text-gray-400 uppercase">CALCULANDO...</span>
+                <div class="flex gap-2 mt-1 w-full justify-center">
+                    <span id="macro-trend" class="text-[8px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">MACRO: --</span>
+                    <span id="volatility-idx" class="text-[8px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">VOL: --</span>
+                </div>
+            </div>
+
+            <!-- Botão Master -->
+            <div class="flex items-center">
+                 <button id="btn-master-auto" onclick="Core.toggleAutoPermission()" class="h-full bg-gray-800 text-gray-500 border border-gray-600 px-3 rounded text-[9px] font-black uppercase transition-all hover:bg-gray-700 flex flex-col justify-center items-center gap-1 min-w-[60px]">
+                    <span>AUTO</span>
+                    <span id="auto-state-text" class="text-xs text-white">OFF</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- LOGS -->
+        <div class="flex-1 flex flex-col overflow-hidden panel relative">
+            <div class="bg-[#0b0e14] px-2 py-1.5 border-b border-gray-800 flex justify-between items-center">
+                <span class="text-[8px] font-bold text-blue-400 uppercase tracking-widest">>> LOG DE DECISÃO INSTITUCIONAL</span>
+                <button onclick="Core.clearLogs()" class="text-gray-600 hover:text-white" title="Limpar">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+            
+            <div id="signal-log" class="flex-1 overflow-y-auto p-2 font-mono">
+                <div class="log-item text-gray-500 text-center italic">
+                    Aguardando sincronização de velas e ticks...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD INFERIOR -->
+    <div id="footer-bot" class="hidden footer-fixed flex flex-col justify-center px-4 py-2 border-t border-gray-800 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+        
+        <!-- Linha 1: Métricas de Entrada -->
+        <div class="flex justify-between items-center mb-2">
+            <div class="flex gap-4">
+                <div class="flex flex-col">
+                    <span class="text-[7px] text-gray-500 uppercase font-bold">Probabilidade</span>
+                    <span id="prob-display" class="text-sm font-black text-gray-300">0%</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[7px] text-gray-500 uppercase font-bold">Estabilidade</span>
+                    <span id="stability-display" class="text-sm font-black text-gray-500">--</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[7px] text-gray-500 uppercase font-bold">RSI (Dinâmico)</span>
+                    <span id="rsi-display" class="text-xs font-bold text-gray-400">--</span>
+                </div>
+            </div>
+
+            <!-- Controles -->
+            <div class="flex items-center gap-2">
+                <div class="text-right mr-2">
+                    <span class="text-[7px] text-gray-500 block">STAKE</span>
+                    <input id="bot-stake" type="number" value="0.35" class="w-12 bg-black border border-gray-700 text-blue-400 font-bold text-[10px] p-1 rounded text-center">
+                </div>
+                <button onclick="Core.toggleModal(true)" class="bg-gray-800 p-2 rounded hover:bg-gray-700 border border-gray-700">⚙️</button>
+                <button id="btn-system-toggle" onclick="Core.toggleSystem()" class="bg-blue-900/30 text-blue-400 border border-blue-500/50 px-4 py-2 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition-all min-w-[100px]">
+                    LIGAR SISTEMA
+                </button>
+            </div>
+        </div>
+
+        <!-- Linha 2: Barra de Pressão -->
+        <div class="relative w-full h-3 bg-gray-900 rounded overflow-hidden border border-gray-800">
+            <!-- Marcador Neutro (75-85%) -->
+            <div class="absolute top-0 bottom-0 left-[75%] w-[10%] bg-yellow-900/20 border-l border-r border-yellow-900/30 z-10" title="Zona de Observação"></div>
+            
+            <div id="pressure-bar" class="h-full w-1/2 bg-gray-700 transition-all duration-300 relative"></div>
+            <div class="absolute inset-0 flex justify-between px-2 items-center text-[7px] font-black uppercase text-white/20 pointer-events-none">
+                <span>Venda Forte</span>
+                <span>Compra Forte</span>
+            </div>
+        </div>
+        
+        <!-- Linha 3: Resumo Financeiro -->
+        <div class="flex justify-center gap-4 mt-2 text-[8px] font-mono text-gray-500">
+            <span>WIN: <b id="stat-wins" class="text-green-500">0</b></span>
+            <span>LOSS: <b id="stat-losses" class="text-red-500">0</b></span>
+            <span>RESULT: <b id="stat-net" class="text-blue-400">$ 0.00</b></span>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIG -->
+    <div id="modal-settings" class="hidden fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div class="bg-[#0d1117] p-6 w-full max-w-xs border border-gray-800 rounded-lg shadow-2xl relative">
+            <h2 class="text-blue-500 font-black text-xs uppercase mb-4 tracking-widest border-b border-gray-800 pb-2">Gestão de Risco</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[9px] text-gray-400 block mb-1 font-bold">Meta de Lucro (TP)</label>
+                    <input id="risk-tp" type="number" value="10.00" class="w-full bg-black border border-gray-800 p-2 rounded text-xs text-green-500 font-bold">
+                </div>
+                <div>
+                    <label class="text-[9px] text-gray-400 block mb-1 font-bold">Limite de Perda (SL)</label>
+                    <input id="risk-sl" type="number" value="5.00" class="w-full bg-black border border-gray-800 p-2 rounded text-xs text-red-500 font-bold">
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="chk-reversion" checked class="accent-blue-600 h-3 w-3">
+                    <label for="chk-reversion" class="text-[9px] text-gray-400">Smart Exit (Saída na Reversão)</label>
+                </div>
+            </div>
+
+            <button onclick="Core.toggleModal(false)" class="w-full bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 rounded text-[10px] uppercase mt-6">Salvar & Fechar</button>
+        </div>
+    </div>
+
+    <script>
+        const Core = {
+            ws: null,
+            ticks: [],
+            candles: [], // Velas M1
+            activeTrade: null,
+            
+            // Variáveis de Controle
+            systemActive: false,    // Botão inferior
+            autoPermission: false,  // Botão superior (Auto Trade)
+            wakeLock: null,
+            
+            // Estado do Mercado
+            marketState: {
+                context: 'NEUTRO', // TENDENCIA_ALTA, TENDENCIA_BAIXA, LATERAL
+                volatility: 'BAIXA',
+                macroTrend: 'NEUTRO', // CALL_ONLY, PUT_ONLY, NEUTRO
+                lastSignalDir: null,
+                signalConsistency: 0, // Contador Anti-Flip
+            },
+
+            // Indicadores Acumulados
+            obv: 0,
+            
+            // Configuração
+            config: {
+                tp: 10,
+                sl: 5,
+                smartExit: true
+            },
+            
+            stats: { wins: 0, losses: 0, net: 0 },
+
+            async init() {
+                const token = document.getElementById('api-token').value;
+                if(!token) return;
+                
+                this.requestWakeLock();
+                this.ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=121512');
+                
+                this.ws.onopen = () => {
+                    this.ws.send(JSON.stringify({ authorize: token }));
+                    document.getElementById('connection-status').innerText = "AUTENTICANDO...";
+                };
+                
+                this.ws.onmessage = (msg) => {
+                    const data = JSON.parse(msg.data);
+                    this.router(data);
+                };
+                
+                this.ws.onclose = () => {
+                    document.getElementById('connection-status').innerText = "OFFLINE";
+                    document.getElementById('connection-status').className = "text-red-600 font-black";
+                    setTimeout(() => this.init(), 3000); // Reconnect
+                };
+            },
+
+            router(data) {
+                switch(data.msg_type) {
+                    case 'authorize':
+                        if(!data.error) {
+                            this.startStreams();
+                            document.getElementById('setup-screen').classList.add('hidden');
+                            document.getElementById('main-terminal').classList.remove('hidden');
+                            document.getElementById('footer-bot').classList.remove('hidden');
+                            document.getElementById('connection-status').innerText = "ONLINE";
+                            document.getElementById('connection-status').className = "text-green-500 font-black";
+                        }
+                        break;
+                    case 'tick':
+                        this.processTick(data.tick.quote);
+                        break;
+                    case 'ohlc': // Recebendo candles
+                        this.processCandle(data.ohlc);
+                        break;
+                    case 'proposal_open_contract':
+                        this.manageTrade(data.proposal_open_contract);
+                        break;
+                    case 'buy':
+                        if(!data.error && this.activeTrade) {
+                            this.activeTrade.contract_id = data.buy.contract_id;
+                            this.log(`Ordem Executada: ID ${data.buy.contract_id}`, 'info');
+                        }
+                        break;
+                    case 'balance':
+                        document.getElementById('acc-balance').innerText = `$ ${data.balance.balance.toFixed(2)}`;
+                        break;
+                }
+            },
+
+            startStreams() {
+                this.ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+                this.ws.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
+                this.ws.send(JSON.stringify({ ticks: 'R_100', subscribe: 1 }));
+                // Pede candles de 1 minuto (M1)
+                this.ws.send(JSON.stringify({ 
+                    ticks_history: 'R_100', 
+                    end: 'latest', 
+                    style: 'candles', 
+                    granularity: 60, 
+                    count: 100,
+                    subscribe: 1 
+                }));
+            },
+
+            // ============================================================
+            // 🧠 MOTOR DE ANÁLISE V5 (CORE)
+            // ============================================================
+
+            processCandle(candle) {
+                // Gerencia array de velas (Macro)
+                const last = this.candles[this.candles.length - 1];
+                if(last && last.epoch === candle.epoch) {
+                    this.candles[this.candles.length - 1] = candle;
+                } else {
+                    this.candles.push(candle);
+                    if(this.candles.length > 100) this.candles.shift();
+                }
+                
+                // Recalcula Contexto Macro a cada atualização de vela
+                this.determineMarketContext();
+            },
+
+            processTick(price) {
+                const p = parseFloat(price);
+                
+                // Gestão de OBV com Decaimento (Normalized Flow)
+                if(this.ticks.length > 0) {
+                    const prev = this.ticks[this.ticks.length - 1];
+                    const change = p > prev ? 1 : (p < prev ? -1 : 0);
+                    // Decaimento de 2% a cada tick para evitar acumulação infinita
+                    this.obv = (this.obv * 0.98) + change; 
+                }
+                
+                this.ticks.push(p);
+                if(this.ticks.length > 300) this.ticks.shift();
+
+                // Só analisa se tiver dados suficientes (Macro e Micro)
+                if(this.candles.length > 50 && this.ticks.length > 50) {
+                    this.runHybridAnalysis();
+                }
+            },
+
+            // 1️⃣ CLASSIFICAÇÃO DE CONTEXTO
+            determineMarketContext() {
+                const c = this.candles;
+                const closes = c.map(x => parseFloat(x.close));
+                
+                // SMAs de Candles
+                const sma20 = this.calcSMA(closes, 20);
+                const sma50 = this.calcSMA(closes, 50);
+                
+                if(!sma20 || !sma50) return;
+
+                const diff = sma20 - sma50;
+                const threshold = sma50 * 0.0005; // 0.05% de diferença para considerar tendência
+
+                let context = 'LATERAL';
+                let macro = 'NEUTRO';
+
+                if(diff > threshold) {
+                    context = 'TENDENCIA_ALTA';
+                    macro = 'CALL_ONLY';
+                } else if (diff < -threshold) {
+                    context = 'TENDENCIA_BAIXA';
+                    macro = 'PUT_ONLY';
+                }
+
+                // Detecção de Volatilidade (ATR Simplificado no olho)
+                const lastCandle = c[c.length-1];
+                const candleSize = Math.abs(lastCandle.high - lastCandle.low);
+                const avgSize = c.slice(-10).reduce((a,b) => a + Math.abs(b.high - b.low), 0) / 10;
+                const volatility = candleSize > (avgSize * 1.5) ? 'ALTA' : 'NORMAL';
+
+                this.marketState.context = context;
+                this.marketState.macroTrend = macro;
+                this.marketState.volatility = volatility;
+
+                this.updateContextUI();
+            },
+
+            // 2️⃣ ANÁLISE HÍBRIDA (MACRO + MICRO)
+            runHybridAnalysis() {
+                // Se o contexto macro não estiver definido, aborta
+                if(this.marketState.macroTrend === 'NEUTRO' && this.marketState.context === 'LATERAL') {
+                    // Em lateralidade pura, permitimos scalping curto, mas com cuidado.
+                    // Por segurança institucional, vamos priorizar tendências.
+                }
+
+                // Análise Técnica Micro
+                const micro = this.getMicroIndicators();
+                
+                // Scoring Ponderado (Normalização)
+                let score = 0; // 0 a 100
+                let direction = 'NEUTRO';
+
+                // PESO 1: Alinhamento com Macro (40%)
+                let macroScore = 0;
+                if(this.marketState.macroTrend === 'CALL_ONLY') {
+                    if(micro.direction === 'CALL') macroScore = 40;
+                    else macroScore = 0; // Contra tendência = 0 pontos de macro
+                } else if(this.marketState.macroTrend === 'PUT_ONLY') {
+                    if(micro.direction === 'PUT') macroScore = 40;
+                    else macroScore = 0;
+                } else {
+                    // Lateral: Aceita ambos, mas com peso menor
+                    macroScore = 20; 
+                }
+
+                // PESO 2: Indicadores Micro (40%)
+                // RSI Contextual
+                let rsiScore = 0;
+                const rsi = micro.rsi;
+                
+                if(this.marketState.context.includes('TENDENCIA')) {
+                    // Na tendência, RSI extremo a favor da tendência é bom (força)
+                    if(this.marketState.macroTrend === 'CALL_ONLY' && rsi > 50 && rsi < 85) rsiScore = 20;
+                    if(this.marketState.macroTrend === 'PUT_ONLY' && rsi < 50 && rsi > 15) rsiScore = 20;
+                } else {
+                    // Lateral: RSI extremo é reversão
+                    if(micro.direction === 'CALL' && rsi < 30) rsiScore = 30; // Sobre-venda
+                    if(micro.direction === 'PUT' && rsi > 70) rsiScore = 30; // Sobre-compra
+                }
+
+                // Bollinger (10%)
+                let bbScore = 0;
+                if(micro.bbSignal === micro.direction) bbScore = 10;
+
+                // OBV Alignment (10%)
+                let obvScore = 0;
+                if(micro.direction === 'CALL' && this.obv > 2) obvScore = 10;
+                if(micro.direction === 'PUT' && this.obv < -2) obvScore = 10;
+
+                // SOMA TOTAL
+                // Definir direção baseada no Micro, mas filtrada pelo Macro
+                direction = micro.direction;
+                
+                // Se Micro diz CALL mas Macro é PUT_ONLY, o score é penalizado drasticamente
+                if(this.marketState.macroTrend === 'PUT_ONLY' && direction === 'CALL') {
+                    score = 0; 
+                } else if (this.marketState.macroTrend === 'CALL_ONLY' && direction === 'PUT') {
+                    score = 0;
+                } else {
+                    score = macroScore + rsiScore + bbScore + obvScore;
+                }
+
+                // 3️⃣ ZONA MORTA E ANTI-FLIP (CONFIRMAÇÃO TEMPORAL)
+                this.validateSignal(direction, score, micro);
+            },
+
+            validateSignal(direction, score, microData) {
+                // Zona Morta (< 75%)
+                if(score < 75) {
+                    this.marketState.signalConsistency = 0; // Reset
+                    this.updateSignalUI('NEUTRO', 0);
+                    return;
+                }
+
+                // Verificação Anti-Flip
+                if(direction === this.marketState.lastSignalDir) {
+                    this.marketState.signalConsistency++;
+                } else {
+                    this.marketState.lastSignalDir = direction;
+                    this.marketState.signalConsistency = 1; // Começa contagem
+                }
+
+                this.updateSignalUI(direction, score);
+
+                // Regras de Disparo
+                // 1. Score >= 85% (Sinal Válido)
+                // 2. Consistência >= 2 ticks (Evita oscilação de 1 tick)
+                if(score >= 85 && this.marketState.signalConsistency >= 3) {
+                    
+                    // Log inteligente (só loga se mudou algo ou é muito forte)
+                    if(this.marketState.signalConsistency === 3 || score >= 95) {
+                        this.logDecision(direction, score, microData);
+                    }
+
+                    // AUTO TRADE (Score >= 95%)
+                    if(this.systemActive && this.autoPermission && !this.activeTrade && score >= 95) {
+                        this.executeTrade(direction, score);
+                    }
+                }
+            },
+
+            getMicroIndicators() {
+                const p = this.ticks;
+                const last = p[p.length-1];
+                
+                // RSI (14 periodos simplificado para ticks)
+                let gains = 0, losses = 0;
+                for(let i = p.length-15; i < p.length; i++) {
+                    const diff = p[i] - p[i-1];
+                    if(diff >= 0) gains += diff; else losses -= diff;
+                }
+                const rs = gains / (losses || 1);
+                const rsi = 100 - (100 / (1 + rs));
+
+                // Bollinger (20 periodos, 2 std dev)
+                const slice = p.slice(-20);
+                const mean = slice.reduce((a,b)=>a+b,0)/20;
+                const sd = Math.sqrt(slice.reduce((a,b)=>a+Math.pow(b-mean,2),0)/20);
+                const upper = mean + (2*sd);
+                const lower = mean - (2*sd);
+
+                let dir = 'NEUTRO';
+                let bbSignal = 'NEUTRO';
+
+                // Lógica Micro Básica
+                if(last > mean) dir = 'CALL'; else dir = 'PUT';
+
+                if(last <= lower) bbSignal = 'CALL'; // Tocou banda inferior
+                if(last >= upper) bbSignal = 'PUT';  // Tocou banda superior
+
+                return { direction: dir, rsi: rsi, bbSignal: bbSignal };
+            },
+
+            // ============================================================
+            // 🛠️ UTILITÁRIOS E UI
+            // ============================================================
+
+            calcSMA(data, period) {
+                if(data.length < period) return null;
+                return data.slice(-period).reduce((a,b)=>a+b,0) / period;
+            },
+
+            logDecision(dir, score, micro) {
+                const box = document.getElementById('signal-log');
+                const time = new Date().toLocaleTimeString();
+                const typeClass = dir === 'CALL' ? 'log-call' : 'log-put';
+                
+                // Detalhes técnicos no log
+                const details = `Macro: ${this.marketState.macroTrend} | RSI: ${micro.rsi.toFixed(0)} | OBV: ${this.obv.toFixed(1)}`;
+
+                const html = `
+                    <div class="log-item ${typeClass}">
+                        <div class="flex justify-between font-black uppercase text-gray-300">
+                            <span>${dir} (${score.toFixed(0)}%)</span>
+                            <span class="text-gray-600">${time}</span>
+                        </div>
+                        <div class="text-[9px] text-gray-500 mt-1">${details}</div>
+                        <div class="text-[8px] text-gray-600 mt-0.5">Ctx: ${this.marketState.context}</div>
+                    </div>
+                `;
+                
+                box.insertAdjacentHTML('afterbegin', html);
+                if(box.children.length > 50) box.lastElementChild.remove();
+            },
+
+            log(msg, type='info') {
+                const box = document.getElementById('signal-log');
+                const time = new Date().toLocaleTimeString();
+                let css = 'log-info';
+                if(type === 'warn') css = 'log-warn';
+                
+                const html = `
+                    <div class="log-item ${css}">
+                        <span class="text-gray-400 font-bold">${time}:</span> ${msg}
+                    </div>
+                `;
+                box.insertAdjacentHTML('afterbegin', html);
+            },
+
+            updateContextUI() {
+                const ctxEl = document.getElementById('market-context');
+                const macroEl = document.getElementById('macro-trend');
+                
+                ctxEl.innerText = this.marketState.context.replace('_', ' ');
+                if(this.marketState.context.includes('ALTA')) ctxEl.className = "text-[9px] font-black text-green-500 uppercase";
+                else if(this.marketState.context.includes('BAIXA')) ctxEl.className = "text-[9px] font-black text-red-500 uppercase";
+                else ctxEl.className = "text-[9px] font-black text-gray-400 uppercase";
+
+                macroEl.innerText = `MACRO: ${this.marketState.macroTrend}`;
+                document.getElementById('volatility-idx').innerText = `VOL: ${this.marketState.volatility}`;
+            },
+
+            updateSignalUI(dir, score) {
+                document.getElementById('prob-display').innerText = `${score.toFixed(0)}%`;
+                
+                // Barra de Pressão
+                const bar = document.getElementById('pressure-bar');
+                // Centralizado (50%) + Ajuste pelo score
+                // Se Call 100% -> 100% width (Right)
+                // Se Put 100% -> 0% width (Left)
+                // Neutro -> 50%
+                
+                let width = 50;
+                if(dir === 'CALL') width = 50 + (score/2); // 50 a 100
+                if(dir === 'PUT') width = 50 - (score/2);  // 50 a 0
+                
+                bar.style.width = `${width}%`;
+                
+                if(score < 75) {
+                    bar.className = "h-full bg-gray-600 transition-all duration-300 relative";
+                    document.getElementById('prob-display').className = "text-sm font-black text-gray-500";
+                    document.getElementById('stability-display').innerText = "OBSERVANDO";
+                    document.getElementById('stability-display').className = "text-sm font-black text-gray-600";
+                } else {
+                    const color = dir === 'CALL' ? 'bg-green-500' : 'bg-red-500';
+                    bar.className = `h-full ${color} transition-all duration-300 relative shadow-[0_0_10px_rgba(255,255,255,0.2)]`;
+                    document.getElementById('prob-display').className = dir === 'CALL' ? "text-sm font-black text-green-400" : "text-sm font-black text-red-400";
+                    
+                    const stability = this.marketState.signalConsistency >= 3 ? "CONFIRMADO" : "VALIDANDO...";
+                    document.getElementById('stability-display').innerText = stability;
+                    document.getElementById('stability-display').className = stability === "CONFIRMADO" ? "text-sm font-black text-white blink" : "text-sm font-black text-yellow-500";
+                }
+            },
+
+            // ============================================================
+            // 💰 GESTÃO E EXECUÇÃO
+            // ============================================================
+
+            executeTrade(dir, score) {
+                const stake = document.getElementById('bot-stake').value;
+                this.activeTrade = { type: dir, contract_id: null, startTime: Date.now() };
+                
+                this.log(`AUTO-ENTRY: ${dir} (Score ${score}%)`, 'info');
+                
+                this.ws.send(JSON.stringify({
+                    buy: 1, 
+                    subscribe: 1, 
+                    price: parseFloat(stake),
+                    parameters: { amount: parseFloat(stake), basis: 'stake', contract_type: dir, currency: 'USD', duration: 1, duration_unit: 'm', symbol: 'R_100' }
+                }));
+            },
+
+            manageTrade(contract) {
+                if(!this.activeTrade || !this.activeTrade.contract_id) return;
+                if(this.activeTrade.contract_id !== contract.contract_id) return;
+
+                if(contract.is_sold) {
+                    this.activeTrade = null;
+                    const profit = parseFloat(contract.profit);
+                    this.updateStats(profit);
+                    this.log(`RESULTADO: ${profit >= 0 ? 'WIN' : 'LOSS'} ($${profit.toFixed(2)})`, profit >= 0 ? 'info' : 'warn');
+                    return;
+                }
+
+                // SMART REVERSAL EXIT
+                if(this.config.smartExit) {
+                    const currentProfit = parseFloat(contract.profit);
+                    
+                    // Saída Financeira
+                    if(currentProfit >= this.config.tp) this.sell(contract.contract_id, "TAKE PROFIT");
+                    if(currentProfit <= -this.config.sl) this.sell(contract.contract_id, "STOP LOSS");
+
+                    // Saída Técnica (Reversão de Tendência Micro confirmada)
+                    // Só sai se o sinal oposto for > 85% E consistente
+                    if(this.marketState.signalConsistency >= 2) {
+                        if(this.activeTrade.type === 'CALL' && this.marketState.lastSignalDir === 'PUT' && currentProfit > -1) {
+                            this.sell(contract.contract_id, "REVERSÃO DETECTADA");
+                        }
+                        if(this.activeTrade.type === 'PUT' && this.marketState.lastSignalDir === 'CALL' && currentProfit > -1) {
+                            this.sell(contract.contract_id, "REVERSÃO DETECTADA");
+                        }
+                    }
+                }
+            },
+
+            sell(id, reason) {
+                this.ws.send(JSON.stringify({ sell: id, price: 0 }));
+                this.log(`SAÍDA FORÇADA: ${reason}`, 'warn');
+            },
+
+            updateStats(profit) {
+                if(profit > 0) this.stats.wins++; else this.stats.losses++;
+                this.stats.net += profit;
+                
+                document.getElementById('stat-wins').innerText = this.stats.wins;
+                document.getElementById('stat-losses').innerText = this.stats.losses;
+                document.getElementById('stat-net').innerText = `$ ${this.stats.net.toFixed(2)}`;
+                document.getElementById('stat-net').className = this.stats.net >= 0 ? "text-blue-400" : "text-red-500";
+            },
+
+            // ============================================================
+            // ⚙️ CONTROLES GERAIS
+            // ============================================================
+
+            toggleAutoPermission() {
+                this.autoPermission = !this.autoPermission;
+                const btn = document.getElementById('btn-master-auto');
+                const txt = document.getElementById('auto-state-text');
+                
+                if(this.autoPermission) {
+                    btn.classList.remove('bg-gray-800', 'text-gray-500', 'border-gray-600');
+                    btn.classList.add('bg-green-900', 'text-green-400', 'border-green-500');
+                    txt.innerText = "ON";
+                    txt.className = "text-xs text-green-200 font-bold";
+                } else {
+                    btn.classList.add('bg-gray-800', 'text-gray-500', 'border-gray-600');
+                    btn.classList.remove('bg-green-900', 'text-green-400', 'border-green-500');
+                    txt.innerText = "OFF";
+                    txt.className = "text-xs text-gray-500";
+                }
+            },
+
+            toggleSystem() {
+                this.systemActive = !this.systemActive;
+                const btn = document.getElementById('btn-system-toggle');
+                
+                if(this.systemActive) {
+                    btn.innerText = "SISTEMA ARMADO";
+                    btn.className = "bg-red-900/50 text-red-400 border border-red-500 px-4 py-2 rounded font-black text-[9px] uppercase hover:bg-red-800 transition-all min-w-[100px] blink";
+                } else {
+                    btn.innerText = "LIGAR SISTEMA";
+                    btn.className = "bg-blue-900/30 text-blue-400 border border-blue-500/50 px-4 py-2 rounded font-black text-[9px] uppercase hover:bg-blue-600 hover:text-white transition-all min-w-[100px]";
+                }
+                this.config.tp = parseFloat(document.getElementById('risk-tp').value);
+                this.config.sl = parseFloat(document.getElementById('risk-sl').value);
+                this.config.smartExit = document.getElementById('chk-reversion').checked;
+            },
+
+            toggleModal(show) { document.getElementById('modal-settings').classList.toggle('hidden', !show); },
+            clearLogs() { document.getElementById('signal-log').innerHTML = ''; },
+            
+            async requestWakeLock() {
+                try { 
+                    this.wakeLock = await navigator.wakeLock.request('screen'); 
+                    document.addEventListener('visibilitychange', async () => {
+                        if (this.wakeLock !== null && document.visibilityState === 'visible') await navigator.wakeLock.request('screen');
+                    });
+                } catch(e) {}
+            }
+        };
+    </script>
+</body>
+</html>
