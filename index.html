@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deriv SMC Pro | Rise & Fall</title>
+    <style>
+        /* ================= PALETA DE CORES & ROOT ================= */
+        :root {
+            --bg-dark: #0D1117;
+            --panel-bg: #161B22;
+            --green-profit: #00C853;
+            --red-loss: #FF5252;
+            --blue-accent: #2979FF;
+            --yellow-alert: #FFD600;
+            --text-light: #C9D1D9;
+            --border-color: #30363D;
+            --transition: all 0.3s ease;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+        body {
+            background-color: var(--bg-dark); color: var(--text-light);
+            height: 100vh; overflow-x: hidden;
+        }
+
+        /* ================= TELA DE LOGIN ================= */
+        #login-screen {
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; background: radial-gradient(circle at center, #161B22 0%, #0D1117 100%);
+        }
+
+        .login-box {
+            background-color: var(--panel-bg); padding: 40px; border-radius: 12px;
+            border: 1px solid var(--border-color); width: 100%; max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center;
+        }
+
+        .login-box h1 { color: #fff; margin-bottom: 5px; font-size: 24px; }
+        .login-box p { color: #8b949e; margin-bottom: 25px; font-size: 14px; }
+
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: #fff; }
+        .input-group input, .input-group select {
+            width: 100%; padding: 12px; background: var(--bg-dark); border: 1px solid var(--border-color);
+            color: white; border-radius: 6px; outline: none; transition: var(--transition);
+        }
+        .input-group input:focus { border-color: var(--blue-accent); }
+
+        .btn-connect {
+            width: 100%; padding: 14px; background-color: var(--blue-accent); color: white;
+            border: none; border-radius: 6px; font-size: 16px; font-weight: bold;
+            cursor: pointer; transition: var(--transition);
+        }
+        .btn-connect:hover { background-color: #1c5ec9; transform: translateY(-2px); }
+        #login-status { margin-top: 15px; font-size: 14px; font-weight: bold; min-height: 20px; }
+
+        /* ================= DASHBOARD PRINCIPAL ================= */
+        #main-app { display: none; height: 100vh; flex-direction: column; }
+        
+        /* Header */
+        header {
+            background-color: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+            padding: 15px 30px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-title { font-size: 20px; font-weight: bold; color: white; display: flex; align-items: center; gap: 10px; }
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; background: rgba(0, 200, 83, 0.1); color: var(--green-profit); border: 1px solid var(--green-profit); }
+
+        /* Layout Grid */
+        .app-container {
+            display: grid; grid-template-columns: 320px 1fr 350px; gap: 20px;
+            padding: 20px; flex-grow: 1; overflow-y: hidden;
+        }
+
+        @media (max-width: 1200px) { .app-container { grid-template-columns: 300px 1fr; } }
+        @media (max-width: 900px) { .app-container { grid-template-columns: 1fr; overflow-y: auto; } }
+
+        .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; }
+        .panel-title { font-size: 16px; color: white; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+
+        /* Stats Grid */
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        .stat-card { background: var(--bg-dark); border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-card span { display: block; font-size: 12px; color: #8b949e; margin-bottom: 5px; text-transform: uppercase; }
+        .stat-card strong { font-size: 20px; color: white; }
+        .color-profit { color: var(--green-profit) !important; }
+        .color-loss { color: var(--red-loss) !important; }
+        .color-alert { color: var(--yellow-alert) !important; }
+
+        /* Painel de Análise Profissional */
+        .analysis-box { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .indicator-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; align-items: center; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .bg-green { background: rgba(0, 200, 83, 0.2); color: var(--green-profit); }
+        .bg-red { background: rgba(255, 82, 82, 0.2); color: var(--red-loss); }
+        .bg-blue { background: rgba(41, 121, 255, 0.2); color: var(--blue-accent); }
+        
+        /* Barra de Probabilidade */
+        .prob-bar-bg { width: 100%; height: 20px; background: var(--border-color); border-radius: 10px; overflow: hidden; margin-top: 5px; position: relative; }
+        .prob-bar-fill { height: 100%; width: 0%; background: var(--blue-accent); transition: width 0.5s; }
+        .prob-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 12px; font-weight: bold; line-height: 20px; color: white; text-shadow: 1px 1px 2px black; }
+
+        /* Controles e Botões */
+        .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .btn { padding: 12px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .btn:hover { opacity: 0.8; transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-start { background-color: var(--blue-accent); }
+        .btn-pause { background-color: var(--yellow-alert); color: black; }
+        .btn-stop { background-color: var(--red-loss); grid-column: span 2; }
+        .btn-rise { background-color: var(--green-profit); font-size: 16px; padding: 15px;}
+        .btn-fall { background-color: var(--red-loss); font-size: 16px; padding: 15px;}
+
+        /* Logs */
+        .log-container { flex-grow: 1; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
+        .log-item { padding: 8px; border-radius: 4px; border-left: 3px solid transparent; background: rgba(255,255,255,0.02); }
+        .log-call { border-left-color: var(--green-profit); }
+        .log-put { border-left-color: var(--red-loss); }
+        .log-info { border-left-color: var(--blue-accent); }
+        .log-alert { border-left-color: var(--yellow-alert); }
+        
+        .small-input { padding: 8px !important; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+    <!-- ================= 1. TELA DE LOGIN ================= -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h1>Deriv SMC Pro</h1>
+            <p>Smart Money & Candlestick Automated Trading</p>
+            
+            <div class="input-group">
+                <label>App ID</label>
+                <input type="text" id="app-id" value="121512" readonly style="background: rgba(255,255,255,0.1); color: #888;">
+            </div>
+
+            <div class="input-group">
+                <label>Token da API (Read / Trade)</label>
+                <input type="password" id="api-token" placeholder="Cole seu Token Deriv aqui...">
+            </div>
+
+            <div class="input-group">
+                <label>Tipo de Conta</label>
+                <select id="account-type">
+                    <option value="demo">Conta Demo (Virtual)</option>
+                    <option value="real">Conta Real (Dinheiro Real)</option>
+                </select>
+            </div>
+
+            <button class="btn-connect" onclick="connectDeriv()">Conectar ao Servidor</button>
+            <div id="login-status"></div>
+        </div>
+    </div>
+
+    <!-- ================= 2. DASHBOARD PRINCIPAL ================= -->
+    <div id="main-app">
+        <header>
+            <div class="header-title">
+                📊 Deriv SMC Pro
+                <span class="status-badge" id="header-status">Conectado via WebSocket</span>
+            </div>
+            <div style="font-weight: bold; color: var(--text-light);" id="header-account">Conta: --</div>
+        </header>
+
+        <div class="app-container">
+            
+            <!-- PAINEL ESQUERDO: CONFIGURAÇÕES -->
+            <div class="panel">
+                <div class="panel-title">⚙️ Configurações & Risco</div>
+                
+                <div class="input-group">
+                    <label>Mercado</label>
+                    <select id="cfg-market" class="small-input">
+                        <option value="R_100">Volatility 100 Index</option>
+                        <option value="1HZ10V">Vol 10 (1s) Index</option>
+                        <option value="R_50">Volatility 50 Index</option>
+                    </select>
+                </div>
+
+                <div class="control-grid">
+                    <div class="input-group" style="margin:0;">
+                        <label>Timeframe Análise</label>
+                        <select id="cfg-tf-analysis" class="small-input">
+                            <option value="60">1 Minuto</option>
+                            <option value="300">5 Minutos</option>
+                            <option value="600">10 Minutos</option>
+                        </select>
+                    </div>
+                    <div class="input-group" style="margin:0;">
+                        <label>Duração (Contrato)</label>
+                        <select id="cfg-duration" class="small-input">
+                            <option value="5t">5 Ticks</option>
+                            <option value="1m">1 Minuto</option>
+                            <option value="5m">5 Minutos</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Modo de Operação</label>
+                    <select id="cfg-mode" class="small-input">
+                        <option value="auto">Automático (Executa Ordens)</option>
+                        <option value="manual">Manual (Apenas Sinais)</option>
+                        <option value="trend_surf">Trend Surf (Reentrada na Tendência)</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Probabilidade Mínima Entrada (%)</label>
+                    <input type="number" id="cfg-prob-limit" class="small-input" value="75" min="50" max="100">
+                </div>
+
+                <div style="border-top: 1px solid var(--border-color); margin: 15px 0;"></div>
+
+                <div class="input-group">
+                    <label>Stake Inicial (USD ou %)</label>
+                    <div style="display:flex; gap:5px;">
+                        <input type="number" id="cfg-stake" class="small-input" value="1.00" step="0.5">
+                        <select id="cfg-stake-type" class="small-input" style="width: 80px;">
+                            <option value="fixed">Fixo</option>
+                            <option value="percent">% Banca</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Gestão de Risco</label>
+                    <select id="cfg-martingale" class="small-input">
+                        <option value="none">Soros / Fixo</option>
+                        <option value="martingale">Martingale Clássico (x2.0)</option>
+                        <option value="anti">Anti-Martingale (x2 no Win)</option>
+                    </select>
+                </div>
+
+                <div class="control-grid">
+                    <div class="input-group" style="margin:0;">
+                        <label>Stop Loss ($)</label>
+                        <input type="number" id="cfg-sl" class="small-input" value="20">
+                    </div>
+                    <div class="input-group" style="margin:0;">
+                        <label>Take Profit ($)</label>
+                        <input type="number" id="cfg-tp" class="small-input" value="20">
+                    </div>
+                </div>
+
+                <div class="control-grid" style="margin-top: auto; padding-top: 15px;">
+                    <button class="btn btn-start" id="btn-start" onclick="toggleBot(true)">▶ Iniciar</button>
+                    <button class="btn btn-pause" id="btn-pause" onclick="toggleBot(false)" disabled>⏸ Pausar</button>
+                    <button class="btn btn-stop" onclick="emergencyStop()">⛔ STOP EMERGÊNCIA</button>
+                </div>
+            </div>
+
+            <!-- PAINEL CENTRAL: DASHBOARD E MODO MANUAL -->
+            <div class="panel">
+                <div class="panel-title">
+                    <span>📈 Dashboard Real-Time</span>
+                    <span id="live-price" style="color: var(--yellow-alert); font-family: monospace; font-size: 18px;">0.0000</span>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card"><span>Saldo Atual</span><strong id="ui-balance" class="color-alert">--</strong></div>
+                    <div class="stat-card"><span>Lucro Diário</span><strong id="ui-profit">--</strong></div>
+                    <div class="stat-card"><span>Win Rate</span><strong id="ui-winrate">0%</strong></div>
+                    <div class="stat-card"><span>Trades (W/L)</span><strong id="ui-trades">0 (0/0)</strong></div>
+                    <div class="stat-card"><span>Estado Mercado</span><strong id="ui-market-state">Analisando...</strong></div>
+                    <div class="stat-card"><span>Bot Status</span><strong id="ui-bot-status" style="color: gray;">Parado</strong></div>
+                </div>
+
+                <div class="panel-title">🧠 Motor SMC & Probabilidade</div>
+                
+                <div class="analysis-box">
+                    <div class="indicator-row">
+                        <span>Tendência (EMA + ADX) [30%]</span>
+                        <span class="badge" id="ind-trend">Carregando...</span>
+                    </div>
+                    <div class="indicator-row">
+                        <span>Liquidez & Order Blocks [25%]</span>
+                        <span class="badge" id="ind-smc">Aguardando...</span>
+                    </div>
+                    <div class="indicator-row">
+                        <span>Padrão Candlestick [20%]</span>
+                        <span class="badge" id="ind-candle">Analisando Velas...</span>
+                    </div>
+                    <div class="indicator-row">
+                        <span>Momentum / Volatilidade [25%]</span>
+                        <span class="badge" id="ind-vol">Normal</span>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <span style="font-size: 12px; font-weight: bold;">Probabilidade Final de Êxito:</span>
+                        <div class="prob-bar-bg">
+                            <div class="prob-bar-fill" id="prob-fill"></div>
+                            <div class="prob-text" id="prob-text">0% (Aguardando Sinal)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botões Manuais -->
+                <div class="control-grid" id="manual-controls" style="opacity: 0.5; pointer-events: none;">
+                    <button class="btn btn-rise" onclick="forceTrade('CALL')">📈 RISE (SOBE)</button>
+                    <button class="btn btn-fall" onclick="forceTrade('PUT')">📉 FALL (DESCE)</button>
+                </div>
+            </div>
+
+            <!-- PAINEL DIREITO: LOGS E AUDITORIA -->
+            <div class="panel">
+                <div class="panel-title">
+                    📝 Logs & Auditoria
+                    <button onclick="clearLogs()" style="background: none; border: none; color: var(--blue-accent); cursor: pointer; font-size: 12px;">Limpar</button>
+                </div>
+                <div class="log-container" id="log-box">
+                    <div class="log-item log-info">Sistema pronto. Aguardando inicialização do bot...</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ================= SCRIPT JAVASCRIPT PRINCIPAL ================= -->
+    <script>
+        // --- VARIÁVEIS GLOBAIS ---
+        let ws;
+        const app_id = 121512;
+        let isConnected = false;
+        let botState = 'STOPPED'; // STOPPED, RUNNING, PAUSED, TRADING
+        
+        let account = { balance: 0, currency: 'USD', loginid: '' };
+        let stats = { profit: 0, wins: 0, losses: 0, totalTrades: 0, currentStake: 0, initialStake: 0 };
+        
+        // Memória Técnica
+        let marketData = { ticks: [], candles: [], high: 0, low: 9999999, trend: 'FLAT' };
+        let currentSignal = { direction: 'NONE', probability: 0, reason: '' };
+
+        // --- SISTEMA DE LOGS ---
+        function writeLog(msg, type = 'info') {
+            const box = document.getElementById('log-box');
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = `log-item log-${type}`;
+            div.innerHTML = `<span style="color:#888;">[${time}]</span> ${msg}`;
+            box.prepend(div);
+        }
+        function clearLogs() { document.getElementById('log-box').innerHTML = ''; }
+
+        // --- ATUALIZAÇÃO DE INTERFACE ---
+        function updateDashboard() {
+            document.getElementById('ui-balance').innerText = `${account.balance.toFixed(2)} ${account.currency}`;
+            document.getElementById('ui-profit').innerText = `${stats.profit >= 0 ? '+' : ''}$${stats.profit.toFixed(2)}`;
+            document.getElementById('ui-profit').className = stats.profit >= 0 ? 'color-profit' : 'color-loss';
+            
+            let winRate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : 0;
+            document.getElementById('ui-winrate').innerText = `${winRate}%`;
+            document.getElementById('ui-trades').innerText = `${stats.totalTrades} (${stats.wins}W / ${stats.losses}L)`;
+
+            let statusTxt = botState === 'RUNNING' ? '🟢 Analisando' : botState === 'TRADING' ? '🟡 Em Operação' : '🔴 Parado';
+            document.getElementById('ui-bot-status').innerText = statusTxt;
+        }
+
+        // --- WEBSOCKET E CONEXÃO ---
+        function connectDeriv() {
+            const token = document.getElementById('api-token').value.trim();
+            const statusLabel = document.getElementById('login-status');
+            
+            if(!token) { statusLabel.innerText = 'Erro: Insira o Token!'; statusLabel.style.color = 'var(--red-loss)'; return; }
+            statusLabel.innerText = 'Conectando ao WebSocket...'; statusLabel.style.color = 'var(--yellow-alert)';
+
+            if(ws) ws.close();
+            ws = new WebSocket(`wss://ws.binaryws.com/websockets/v3?app_id=${app_id}`);
+
+            ws.onopen = () => { ws.send(JSON.stringify({ authorize: token })); };
+
+            ws.onmessage = (msg) => {
+                const data = JSON.parse(msg.data);
+
+                if (data.error) {
+                    if(!isConnected) { statusLabel.innerText = `Falha: ${data.error.message}`; statusLabel.style.color = 'var(--red-loss)'; }
+                    else { writeLog(`ERRO API: ${data.error.message}`, 'alert'); }
+                    return;
+                }
+
+                // 1. Autorização Sucesso
+                if (data.msg_type === 'authorize') {
+                    isConnected = true;
+                    account.balance = data.authorize.balance;
+                    account.currency = data.authorize.currency;
+                    account.loginid = data.authorize.loginid;
+                    
+                    document.getElementById('login-screen').style.display = 'none';
+                    document.getElementById('main-app').style.display = 'flex';
+                    document.getElementById('header-account').innerText = `${account.loginid} (${document.getElementById('account-type').value.toUpperCase()})`;
+                    
+                    writeLog(`Conexão estabelecida. Conta: ${account.loginid}`, 'info');
+                    updateDashboard();
+                }
+
+                // 2. Histórico de Velas (Inicialização TA)
+                if (data.msg_type === 'ohlc' || data.msg_type === 'candles') {
+                    if (data.candles) { marketData.candles = data.candles; } 
+                    else if (data.ohlc) {
+                        document.getElementById('live-price').innerText = parseFloat(data.ohlc.close).toFixed(4);
+                        // Atualiza a última vela
+                        let last = marketData.candles[marketData.candles.length - 1];
+                        if(last && last.epoch === data.ohlc.epoch) { marketData.candles[marketData.candles.length - 1] = data.ohlc; } 
+                        else { marketData.candles.push(data.ohlc); }
+                        if(marketData.candles.length > 100) marketData.candles.shift();
+                        
+                        if(botState === 'RUNNING') calculateTechnicalAnalysis();
+                    }
+                }
+
+                // 3. Compra Confirmada
+                if (data.msg_type === 'buy') {
+                    const cId = data.buy.contract_id;
+                    const type = data.buy.shortcode.includes('CALL') ? 'RISE' : 'FALL';
+                    writeLog(`🛒 Ordem Aberta: ${type} | Investimento: $${stats.currentStake.toFixed(2)}`, type === 'RISE' ? 'call' : 'put');
+                    // Inscreve para monitorar o fechamento
+                    ws.send(JSON.stringify({ proposal_open_contract: 1, contract_id: cId, subscribe: 1 }));
+                }
+
+                // 4. Resultado do Contrato (Win/Loss)
+                if (data.msg_type === 'proposal_open_contract') {
+                    const contract = data.proposal_open_contract;
+                    if (contract.is_sold) {
+                        botState = 'RUNNING'; // Libera para nova ordem
+                        let pnl = parseFloat(contract.profit);
+                        stats.profit += pnl;
+                        stats.totalTrades++;
+                        account.balance += pnl; // Atualização local rápida
+
+                        if (pnl > 0) {
+                            stats.wins++;
+                            writeLog(`✅ WIN! Lucro: +$${pnl.toFixed(2)}`, 'call');
+                            handleRiskManagement('WIN');
+                        } else {
+                            stats.losses++;
+                            writeLog(`❌ LOSS! Perda: $${pnl.toFixed(2)}`, 'put');
+                            handleRiskManagement('LOSS');
+                        }
+                        
+                        updateDashboard();
+                        checkLimits();
+                    }
+                }
+            };
+
+            ws.onclose = () => { isConnected = false; alert("Conexão com a Deriv Perdida. Recarregue a página."); };
+        }
+
+        // --- MOTOR DE ANÁLISE TÉCNICA E PROBABILIDADE ---
+        function calculateTechnicalAnalysis() {
+            if (marketData.candles.length < 10) return;
+            
+            const candles = marketData.candles;
+            const c0 = candles[candles.length - 1]; // Atual
+            const c1 = candles[candles.length - 2]; // Anterior
+            const c2 = candles[candles.length - 3];
+
+            let prob = 0;
+            let finalSignal = 'NONE';
+            let reasons = [];
+
+            // 1. TENDÊNCIA (Média Simples - Proxy p/ EMA) [Max 30%]
+            let sum = 0; for(let i=1; i<=14; i++) sum += parseFloat(candles[candles.length-i].close);
+            let sma14 = sum / 14;
+            let isUptrend = parseFloat(c0.close) > sma14;
+            
+            if(isUptrend) { prob += 30; marketData.trend = 'UP'; finalSignal = 'CALL'; reasons.push('Tendência de Alta'); document.getElementById('ind-trend').className = 'badge bg-green'; document.getElementById('ind-trend').innerText = 'ALTA (Bullish)'; }
+            else { prob += 30; marketData.trend = 'DOWN'; finalSignal = 'PUT'; reasons.push('Tendência de Baixa'); document.getElementById('ind-trend').className = 'badge bg-red'; document.getElementById('ind-trend').innerText = 'BAIXA (Bearish)'; }
+
+            document.getElementById('ui-market-state').innerText = isUptrend ? 'Tendência Alta' : 'Tendência Baixa';
+
+            // 2. CANDLESTICK PATTERNS (Imagens) [Max 20%]
+            let isC1Red = parseFloat(c1.close) < parseFloat(c1.open);
+            let isC0Green = parseFloat(c0.close) > parseFloat(c0.open);
+            let bullishEngulfing = isC1Red && isC0Green && (parseFloat(c0.close) > parseFloat(c1.open));
+
+            let isC1Green = parseFloat(c1.close) > parseFloat(c1.open);
+            let isC0Red = parseFloat(c0.close) < parseFloat(c0.open);
+            let bearishEngulfing = isC1Green && isC0Red && (parseFloat(c0.close) < parseFloat(c1.open));
+
+            if(bullishEngulfing && finalSignal === 'CALL') {
+                prob += 20; reasons.push('Engulfing Bullish');
+                document.getElementById('ind-candle').className = 'badge bg-green'; document.getElementById('ind-candle').innerText = 'Bullish Engulfing';
+            } else if (bearishEngulfing && finalSignal === 'PUT') {
+                prob += 20; reasons.push('Engulfing Bearish');
+                document.getElementById('ind-candle').className = 'badge bg-red'; document.getElementById('ind-candle').innerText = 'Bearish Engulfing';
+            } else {
+                document.getElementById('ind-candle').className = 'badge bg-blue'; document.getElementById('ind-candle').innerText = 'Padrão Neutro';
+            }
+
+            // 3. SMC / ORDER BLOCKS [Max 25%]
+            // Lógica simplificada: Se preço rompeu a máxima/mínima recente e retornou
+            let recentHigh = Math.max(parseFloat(c2.high), parseFloat(c1.high));
+            let recentLow = Math.min(parseFloat(c2.low), parseFloat(c1.low));
+            
+            if(parseFloat(c0.close) > recentHigh && finalSignal === 'CALL') {
+                prob += 25; reasons.push('Liquidez Acima Capturada (BOS)');
+                document.getElementById('ind-smc').className = 'badge bg-green'; document.getElementById('ind-smc').innerText = 'BOS Alta';
+            } else if (parseFloat(c0.close) < recentLow && finalSignal === 'PUT') {
+                prob += 25; reasons.push('Liquidez Abaixo Capturada (BOS)');
+                document.getElementById('ind-smc').className = 'badge bg-red'; document.getElementById('ind-smc').innerText = 'BOS Baixa';
+            } else {
+                prob += 10; // Pontuação base
+                document.getElementById('ind-smc').className = 'badge bg-blue'; document.getElementById('ind-smc').innerText = 'Mapeando FVG...';
+            }
+
+            // 4. MOMENTUM & VOLATILIDADE [Max 25%]
+            let bodySize = Math.abs(parseFloat(c0.close) - parseFloat(c0.open));
+            if(bodySize > 0.0001) { prob += 25; reasons.push('Forte Momentum'); document.getElementById('ind-vol').className = 'badge bg-green'; document.getElementById('ind-vol').innerText = 'Alto Momentum'; }
+            else { prob += 10; document.getElementById('ind-vol').className = 'badge bg-blue'; document.getElementById('ind-vol').innerText = 'Volatilidade Baixa'; }
+
+            // Atualiza UI Probabilidade
+            document.getElementById('prob-fill').style.width = `${prob}%`;
+            document.getElementById('prob-fill').style.background = prob >= 75 ? 'var(--green-profit)' : (prob >= 60 ? 'var(--yellow-alert)' : 'var(--red-loss)');
+            document.getElementById('prob-text').innerText = `${prob}% | Sinal: ${finalSignal}`;
+
+            // --- LÓGICA DE EXECUÇÃO ---
+            let mode = document.getElementById('cfg-mode').value;
+            let probLimit = parseInt(document.getElementById('cfg-prob-limit').value);
+
+            if (mode === 'manual') {
+                document.getElementById('manual-controls').style.opacity = '1';
+                document.getElementById('manual-controls').style.pointerEvents = 'auto';
+            } else {
+                document.getElementById('manual-controls').style.opacity = '0.5';
+                document.getElementById('manual-controls').style.pointerEvents = 'none';
+                
+                if (prob >= probLimit && botState === 'RUNNING') {
+                    let logStr = `Entrada ${finalSignal} porque: ${reasons.join(' + ')} | Prob: ${prob}%`;
+                    writeLog(logStr, 'info');
+                    executeTrade(finalSignal);
+                }
+            }
+        }
+
+        // --- GESTÃO DE RISCO ---
+        function calculateStake() {
+            let type = document.getElementById('cfg-stake-type').value;
+            let val = parseFloat(document.getElementById('cfg-stake').value);
+            return type === 'fixed' ? val : (account.balance * (val / 100));
+        }
+
+        function handleRiskManagement(result) {
+            let config = document.getElementById('cfg-martingale').value;
+            if (result === 'LOSS' && config === 'martingale') {
+                stats.currentStake = stats.currentStake * 2;
+                writeLog(`⚠️ Martingale aplicado. Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert');
+            } else if (result === 'WIN' && config === 'anti') {
+                stats.currentStake = stats.currentStake * 2; // Soros
+                writeLog(`📈 Anti-Martingale (Soros) aplicado. Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert');
+            } else {
+                stats.currentStake = stats.initialStake; // Reseta
+            }
+        }
+
+        function checkLimits() {
+            let sl = parseFloat(document.getElementById('cfg-sl').value);
+            let tp = parseFloat(document.getElementById('cfg-tp').value);
+            
+            if (stats.profit <= -sl) { writeLog(`🛑 STOP LOSS DIÁRIO ATINGIDO (-$${sl}). Parando o bot.`, 'alert'); toggleBot(false); }
+            if (stats.profit >= tp) { writeLog(`🏆 TAKE PROFIT DIÁRIO ATINGIDO (+$${tp}). Meta batida!`, 'info'); toggleBot(false); }
+        }
+
+        // --- EXECUÇÃO DE ORDEM (API DERIV) ---
+        function executeTrade(contractType) {
+            if (botState !== 'RUNNING') return;
+            botState = 'TRADING';
+            updateDashboard();
+
+            let market = document.getElementById('cfg-market').value;
+            let durationRaw = document.getElementById('cfg-duration').value;
+            let durationStr = durationRaw.replace(/\D/g, '');
+            let durationUnit = durationRaw.replace(/[0-9]/g, '');
+
+            const buyPayload = {
+                buy: 1,
+                price: 1000, // Preço máximo permitido para garantir execução a mercado
+                parameters: {
+                    amount: stats.currentStake,
+                    basis: "stake",
+                    contract_type: contractType, // CALL (Rise) ou PUT (Fall)
+                    currency: account.currency,
+                    duration: parseInt(durationStr),
+                    duration_unit: durationUnit,
+                    symbol: market
+                }
+            };
+            
+            ws.send(JSON.stringify(buyPayload));
+        }
+
+        function forceTrade(type) {
+            if (botState !== 'RUNNING') { alert("O bot precisa estar INICIADO para aceitar ordens manuais."); return; }
+            writeLog(`👤 Ação Manual do Usuário: ${type}`, 'info');
+            executeTrade(type);
+        }
+
+        // --- CONTROLES DO BOT ---
+        function toggleBot(start) {
+            if (start) {
+                let market = document.getElementById('cfg-market').value;
+                let granularity = document.getElementById('cfg-tf-analysis').value;
+                
+                stats.initialStake = calculateStake();
+                if(stats.currentStake === 0) stats.currentStake = stats.initialStake;
+
+                // Cancela streams anteriores e inscreve no novo mercado/timeframe
+                ws.send(JSON.stringify({ forget_all: ['ticks', 'candles'] }));
+                ws.send(JSON.stringify({ ticks_history: market, end: 'latest', count: 100, style: 'candles', granularity: parseInt(granularity), subscribe: 1 }));
+                
+                botState = 'RUNNING';
+                document.getElementById('btn-start').disabled = true;
+                document.getElementById('btn-pause').disabled = false;
+                writeLog(`▶️ Bot Iniciado. Monitorando ${market} no gráfico de ${granularity}s.`, 'info');
+            } else {
+                botState = 'PAUSED';
+                document.getElementById('btn-start').disabled = false;
+                document.getElementById('btn-pause').disabled = true;
+                writeLog(`⏸ Bot Pausado. Aguardando retomada.`, 'alert');
+            }
+            updateDashboard();
+        }
+
+        function emergencyStop() {
+            botState = 'STOPPED';
+            if(ws) ws.send(JSON.stringify({ forget_all: ['ticks', 'candles'] }));
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-pause').disabled = true;
+            writeLog(`⛔ PARADA DE EMERGÊNCIA ACIONADA. Nenhuma nova ordem será aberta.`, 'alert');
+            updateDashboard();
+        }
+
+    </script>
+</body>
+</html>
