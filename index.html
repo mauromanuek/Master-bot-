@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deriv SMC Pro | Rise & Fall V5</title>
+    <style>
+        /* ================= MANTIDO INTACTO ================= */
+        :root {
+            --bg-dark: #0D1117; --panel-bg: #161B22; --green-profit: #00C853; --red-loss: #FF5252;
+            --blue-accent: #2979FF; --yellow-alert: #FFD600; --text-light: #C9D1D9; --border-color: #30363D;
+            --transition: all 0.3s ease;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-light); height: 100vh; overflow-x: hidden; }
+
+        #login-screen { display: flex; justify-content: center; align-items: center; height: 100vh; background: radial-gradient(circle at center, #161B22 0%, #0D1117 100%); }
+        .login-box { background-color: var(--panel-bg); padding: 40px; border-radius: 12px; border: 1px solid var(--border-color); width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; }
+        .login-box h1 { color: #fff; margin-bottom: 5px; font-size: 24px; }
+        .login-box p { color: #8b949e; margin-bottom: 25px; font-size: 14px; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: #fff; }
+        .input-group input, .input-group select { width: 100%; padding: 12px; background: var(--bg-dark); border: 1px solid var(--border-color); color: white; border-radius: 6px; outline: none; transition: var(--transition); }
+        .input-group input:focus { border-color: var(--blue-accent); }
+        .btn-connect { width: 100%; padding: 14px; background-color: var(--blue-accent); color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: var(--transition); }
+        .btn-connect:hover { background-color: #1c5ec9; transform: translateY(-2px); }
+        #login-status { margin-top: 15px; font-size: 14px; font-weight: bold; min-height: 20px; }
+
+        #main-app { display: none; height: 100vh; flex-direction: column; }
+        header { background-color: var(--panel-bg); border-bottom: 1px solid var(--border-color); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header-title { font-size: 20px; font-weight: bold; color: white; display: flex; align-items: center; gap: 10px; }
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; background: rgba(0, 200, 83, 0.1); color: var(--green-profit); border: 1px solid var(--green-profit); }
+        .app-container { display: grid; grid-template-columns: 320px 1fr 350px; gap: 20px; padding: 20px; flex-grow: 1; overflow-y: hidden; }
+        @media (max-width: 1200px) { .app-container { grid-template-columns: 300px 1fr; } }
+        @media (max-width: 900px) { .app-container { grid-template-columns: 1fr; overflow-y: auto; } }
+        .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; }
+        .panel-title { font-size: 16px; color: white; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+        @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+        .stat-card { background: var(--bg-dark); border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; text-align: center; position: relative; }
+        .stat-card span { display: block; font-size: 12px; color: #8b949e; margin-bottom: 5px; text-transform: uppercase; }
+        .stat-card strong { font-size: 20px; color: white; }
+        .color-profit { color: var(--green-profit) !important; } .color-loss { color: var(--red-loss) !important; } .color-alert { color: var(--yellow-alert) !important; }
+        
+        .analysis-box { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .indicator-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; align-items: center; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .bg-green { background: rgba(0, 200, 83, 0.2); color: var(--green-profit); }
+        .bg-red { background: rgba(255, 82, 82, 0.2); color: var(--red-loss); }
+        .bg-blue { background: rgba(41, 121, 255, 0.2); color: var(--blue-accent); }
+        .bg-purple { background: rgba(156, 39, 176, 0.2); color: #E040FB; border: 1px solid #E040FB; }
+
+        .prob-bar-bg { width: 100%; height: 20px; background: var(--border-color); border-radius: 10px; overflow: hidden; margin-top: 5px; position: relative; }
+        .prob-bar-fill { height: 100%; width: 0%; background: var(--blue-accent); transition: width 0.5s; }
+        .prob-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 12px; font-weight: bold; line-height: 20px; color: white; text-shadow: 1px 1px 2px black; }
+
+        .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .btn { padding: 12px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .btn:hover { opacity: 0.8; transform: scale(0.98); } .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-start { background-color: var(--blue-accent); } .btn-pause { background-color: var(--yellow-alert); color: black; } .btn-stop { background-color: var(--red-loss); grid-column: span 2; }
+        .btn-rise { background-color: var(--green-profit); font-size: 16px; padding: 15px;} .btn-fall { background-color: var(--red-loss); font-size: 16px; padding: 15px;}
+
+        .log-container { flex-grow: 1; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
+        .log-item { padding: 8px; border-radius: 4px; border-left: 3px solid transparent; background: rgba(255,255,255,0.02); }
+        .log-call { border-left-color: var(--green-profit); } .log-put { border-left-color: var(--red-loss); } .log-info { border-left-color: var(--blue-accent); } .log-alert { border-left-color: var(--yellow-alert); }
+        .small-input { padding: 8px !important; font-size: 13px; }
+    </style>
+</head>
+<body>
+
+    <!-- ================= 1. TELA DE LOGIN ================= -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h1>Deriv SMC Pro <span style="font-size: 12px; color: var(--blue-accent);">V5 Global</span></h1>
+            <p>Smart Money & Advanced Pattern Trading</p>
+            <div class="input-group"><label>App ID</label><input type="text" id="app-id" value="121512" readonly style="background: rgba(255,255,255,0.1); color: #888;"></div>
+            <div class="input-group"><label>Token da API (Read / Trade)</label><input type="password" id="api-token" placeholder="Cole seu Token Deriv aqui..."></div>
+            <div class="input-group"><label>Tipo de Conta</label><select id="account-type"><option value="demo">Conta Demo (Virtual)</option><option value="real">Conta Real (Dinheiro Real)</option></select></div>
+            <button class="btn-connect" onclick="connectDeriv()">Conectar ao Servidor</button>
+            <div id="login-status"></div>
+        </div>
+    </div>
+
+    <!-- ================= 2. DASHBOARD PRINCIPAL ================= -->
+    <div id="main-app">
+        <header>
+            <div class="header-title">📊 Deriv SMC Pro V5 <span class="status-badge" id="header-status">Conectado via WebSocket</span></div>
+            <div style="font-weight: bold; color: var(--text-light);" id="header-account">Conta: --</div>
+        </header>
+
+        <div class="app-container">
+            <!-- PAINEL ESQUERDO: CONFIGURAÇÕES -->
+            <div class="panel">
+                <div class="panel-title">⚙️ Configurações Avançadas</div>
+                
+                <div class="input-group">
+                    <label>Mercado (Ativo)</label>
+                    <select id="cfg-market" class="small-input">
+                        <option value="">Aguardando conexão...</option>
+                    </select>
+                </div>
+
+                <div class="control-grid">
+                    <div class="input-group" style="margin:0;">
+                        <label>Timeframe (OHLC)</label>
+                        <select id="cfg-tf-analysis" class="small-input"><option value="60">1 Minuto</option><option value="300">5 Minutos</option><option value="600">10 Minutos</option></select>
+                    </div>
+                    <div class="input-group" style="margin:0;">
+                        <label title="Bloqueado: Duração = Timeframe">Duração</label>
+                        <input type="text" value="Automático" readonly class="small-input" style="color: #888; background: rgba(255,255,255,0.05);">
+                    </div>
+                </div>
+
+                <div class="control-grid" style="margin-top: 10px;">
+                    <div class="input-group" style="margin:0;">
+                        <label>Modo Operação</label>
+                        <select id="cfg-mode" class="small-input"><option value="auto">Automático</option><option value="manual">Manual (Sinais)</option></select>
+                    </div>
+                    <div class="input-group" style="margin:0;">
+                        <label>Perfil Interno</label>
+                        <select id="cfg-profile" class="small-input"><option value="balanced">Equilibrado</option><option value="secure">Seguro (+Filtros)</option></select>
+                    </div>
+                </div>
+
+                <div class="control-grid" style="border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.2);">
+                    <div class="input-group" style="margin:0;"><label>MTF Trend Surf</label><select id="cfg-mtf" class="small-input"><option value="off">Desativado</option><option value="on">Ativado</option></select></div>
+                    <div class="input-group" style="margin:0;"><label>Saída Dinâmica</label><select id="cfg-dyn-exit" class="small-input"><option value="off">Expirar Normal</option><option value="on">Fechar Reversão</option></select></div>
+                </div>
+
+                <div style="border-top: 1px solid var(--border-color); margin: 15px 0;"></div>
+
+                <div class="input-group">
+                    <label>Stake Inicial (USD ou %)</label>
+                    <div style="display:flex; gap:5px;">
+                        <input type="number" id="cfg-stake" class="small-input" value="1.00" step="0.5">
+                        <select id="cfg-stake-type" class="small-input" style="width: 80px;"><option value="fixed">Fixo</option><option value="percent">% Banca</option></select>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Gestão de Risco</label>
+                    <select id="cfg-martingale" class="small-input"><option value="none">Soros / Fixo</option><option value="martingale">Martingale Clássico (x2.0)</option><option value="anti">Anti-Martingale (x2 no Win)</option></select>
+                </div>
+
+                <div class="control-grid">
+                    <div class="input-group" style="margin:0;"><label>Stop Loss ($)</label><input type="number" id="cfg-sl" class="small-input" value="20"></div>
+                    <div class="input-group" style="margin:0;"><label>Take Profit ($)</label><input type="number" id="cfg-tp" class="small-input" value="20"></div>
+                </div>
+
+                <div class="control-grid" style="margin-top: auto; padding-top: 15px;">
+                    <button class="btn btn-start" id="btn-start" onclick="toggleBot(true)">▶ Iniciar</button>
+                    <button class="btn btn-pause" id="btn-pause" onclick="toggleBot(false)" disabled>⏸ Pausar</button>
+                    <button class="btn btn-stop" onclick="emergencyStop()">⛔ STOP</button>
+                </div>
+            </div>
+
+            <!-- PAINEL CENTRAL: DASHBOARD -->
+            <div class="panel">
+                <div class="panel-title">
+                    <span>📈 Dashboard Real-Time <span id="mtf-badge" class="badge bg-purple" style="display: none; margin-left: 10px;">MTF Ativo</span></span>
+                    <span id="live-price" style="color: var(--yellow-alert); font-family: monospace; font-size: 18px;">0.0000</span>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card"><span>Saldo Atual</span><strong id="ui-balance" class="color-alert">--</strong></div>
+                    <div class="stat-card"><span>Lucro Diário</span><strong id="ui-profit">--</strong></div>
+                    <div class="stat-card"><span>Win Rate</span><strong id="ui-winrate">0%</strong></div>
+                    <div class="stat-card"><span>Trades (W/L)</span><strong id="ui-trades">0 (0/0)</strong></div>
+                    <div class="stat-card"><span>Estado Mercado</span><strong id="ui-market-state">Aguardando Histórico...</strong></div>
+                    <div class="stat-card"><span>Bot Status</span><strong id="ui-bot-status" style="color: gray;">Parado</strong></div>
+                </div>
+
+                <div class="panel-title">🧠 Motor OHLC & Candlestick Tracker</div>
+                
+                <div class="analysis-box">
+                    <div class="indicator-row"><span>Tendência Estrutural</span><span class="badge" id="ind-trend">Carregando...</span></div>
+                    <div class="indicator-row"><span>Condição de Mercado (Filtro Lateral)</span><span class="badge" id="ind-smc">Aguardando...</span></div>
+                    <div class="indicator-row"><span>Padrão Candlestick Formado</span><span class="badge" id="ind-candle">Analisando Velas...</span></div>
+                    <div class="indicator-row"><span>Momentum do OHLC</span><span class="badge" id="ind-vol">Normal</span></div>
+                    
+                    <div style="margin-top: 15px;">
+                        <span style="font-size: 12px; font-weight: bold;">Probabilidade de Êxito:</span>
+                        <div class="prob-bar-bg"><div class="prob-bar-fill" id="prob-fill"></div><div class="prob-text" id="prob-text">0% (Aguardando Dados)</div></div>
+                    </div>
+                </div>
+
+                <div class="control-grid" id="manual-controls" style="opacity: 0.5; pointer-events: none;">
+                    <button class="btn btn-rise" onclick="forceTrade('CALL')">📈 RISE (SOBE)</button>
+                    <button class="btn btn-fall" onclick="forceTrade('PUT')">📉 FALL (DESCE)</button>
+                </div>
+            </div>
+
+            <!-- PAINEL DIREITO: LOGS -->
+            <div class="panel">
+                <div class="panel-title">📝 Logs de Execução <button onclick="clearLogs()" style="background:none; border:none; color:var(--blue-accent); cursor:pointer; font-size:12px;">Limpar</button></div>
+                <div class="log-container" id="log-box"><div class="log-item log-info">Sistema V5 Global Pronto. Aguardando Autenticação...</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= SCRIPT JAVASCRIPT ================= -->
+    <script>
+        // --- VARIÁVEIS GLOBAIS ---
+        let ws; const app_id = 121512; let isConnected = false;
+        let botState = 'STOPPED'; // STOPPED, RUNNING, PAUSED, TRADING
+        let account = { balance: 0, currency: 'USD', loginid: '' };
+        let stats = { profit: 0, wins: 0, losses: 0, totalTrades: 0, currentStake: 0, initialStake: 0, currentOpenProfit: 0 };
+        let marketData = { candles:[], trend: 'FLAT', lateral: false };
+        let activeContractId = null; 
+        let currentSignalDirection = 'NONE';
+        
+        let lastEpoch = 0; 
+
+        // --- SISTEMA DE LOGS & UI ---
+        function writeLog(msg, type = 'info') {
+            const box = document.getElementById('log-box');
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = `log-item log-${type}`;
+            div.innerHTML = `<span style="color:#888;">[${time}]</span> ${msg}`;
+            box.prepend(div);
+        }
+        function clearLogs() { document.getElementById('log-box').innerHTML = ''; }
+
+        function updateDashboard() {
+            document.getElementById('ui-balance').innerText = `${account.balance.toFixed(2)} ${account.currency}`;
+            document.getElementById('ui-profit').innerText = `${stats.profit >= 0 ? '+' : ''}$${stats.profit.toFixed(2)}`;
+            document.getElementById('ui-profit').className = stats.profit >= 0 ? 'color-profit' : 'color-loss';
+            let winRate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : 0;
+            document.getElementById('ui-winrate').innerText = `${winRate}%`;
+            document.getElementById('ui-trades').innerText = `${stats.totalTrades} (${stats.wins}W / ${stats.losses}L)`;
+            let statusTxt = botState === 'RUNNING' ? '🟢 Analisando Velas' : botState === 'TRADING' ? '🟡 Em Operação' : '🔴 Parado';
+            document.getElementById('ui-bot-status').innerText = statusTxt;
+        }
+
+        // --- WEBSOCKET E CONEXÃO ---
+        function connectDeriv() {
+            const token = document.getElementById('api-token').value.trim();
+            const statusLabel = document.getElementById('login-status');
+            if(!token) { statusLabel.innerText = 'Erro: Insira o Token!'; statusLabel.style.color = 'var(--red-loss)'; return; }
+            statusLabel.innerText = 'Conectando ao WebSocket...'; statusLabel.style.color = 'var(--yellow-alert)';
+
+            if(ws) ws.close();
+            ws = new WebSocket(`wss://ws.binaryws.com/websockets/v3?app_id=${app_id}`);
+            ws.onopen = () => { ws.send(JSON.stringify({ authorize: token })); };
+
+            ws.onmessage = (msg) => {
+                const data = JSON.parse(msg.data);
+                if (data.error) {
+                    if(!isConnected) { statusLabel.innerText = `Falha: ${data.error.message}`; statusLabel.style.color = 'var(--red-loss)'; }
+                    else { writeLog(`ERRO API: ${data.error.message}`, 'alert'); }
+                    return;
+                }
+
+                if (data.msg_type === 'authorize') {
+                    isConnected = true; account.balance = data.authorize.balance; account.currency = data.authorize.currency; account.loginid = data.authorize.loginid;
+                    document.getElementById('login-screen').style.display = 'none'; document.getElementById('main-app').style.display = 'flex';
+                    document.getElementById('header-account').innerText = `${account.loginid} (${document.getElementById('account-type').value.toUpperCase()})`;
+                    writeLog(`Conexão estabelecida. Requisitando ativos disponíveis...`, 'info'); 
+                    updateDashboard();
+                    
+                    // FEATURE V5: Solicitar Ativos Globais
+                    ws.send(JSON.stringify({ active_symbols: 'brief', product_type: 'basic' }));
+                }
+
+                // FEATURE V5: Preencher Dropdown de Ativos
+                if (data.msg_type === 'active_symbols') {
+                    const marketSelect = document.getElementById('cfg-market');
+                    marketSelect.innerHTML = '';
+                    let symbols = data.active_symbols.sort((a,b) => a.display_name.localeCompare(b.display_name));
+                    
+                    symbols.forEach(sym => {
+                        if(sym.exchange_is_open) {
+                            let opt = document.createElement('option');
+                            opt.value = sym.symbol;
+                            opt.innerText = sym.display_name;
+                            if(sym.symbol === 'R_100') opt.selected = true; // Default seguro
+                            marketSelect.appendChild(opt);
+                        }
+                    });
+                    writeLog(`Lista de ativos carregada com sucesso. Selecione e inicie.`, 'info');
+                    
+                    // Listeners para trocar de ativo/timeframe dinamicamente
+                    marketSelect.addEventListener('change', fetchMarketHistory);
+                    document.getElementById('cfg-tf-analysis').addEventListener('change', fetchMarketHistory);
+                    
+                    // Carrega o histórico do primeiro ativo selecionado por padrão
+                    fetchMarketHistory();
+                }
+
+                if (data.msg_type === 'candles') {
+                    marketData.candles = data.candles; 
+                    lastEpoch = data.candles[data.candles.length - 1].epoch;
+                    writeLog(`✅ Histórico de velas carregado. Dashboard atualizado.`, 'info');
+                    updateDashboardAnalysis(false); // Atualiza UI sem executar trade
+                } 
+                else if (data.msg_type === 'ohlc') {
+                    const ohlc = data.ohlc;
+                    document.getElementById('live-price').innerText = parseFloat(ohlc.close).toFixed(5);
+                    
+                    let currentEpoch = ohlc.epoch;
+                    let last = marketData.candles[marketData.candles.length - 1];
+                    
+                    if(last && last.epoch === currentEpoch) { marketData.candles[marketData.candles.length - 1] = ohlc; } 
+                    else { marketData.candles.push(ohlc); }
+                    if(marketData.candles.length > 100) marketData.candles.shift();
+                    
+                    if(botState === 'RUNNING') updateVisualAnalysis();
+
+                    if (lastEpoch !== 0 && currentEpoch !== lastEpoch) {
+                        if(botState === 'RUNNING') {
+                            writeLog(`⏱️ Vela fechada. Processando sinal analítico...`, 'info');
+                            updateDashboardAnalysis(true); // Atualiza UI E executa trade
+                        } else {
+                            updateDashboardAnalysis(false); // Só atualiza UI (Streaming em tempo real visual)
+                        }
+                    }
+                    lastEpoch = currentEpoch;
+
+                    if(botState === 'TRADING' && activeContractId && document.getElementById('cfg-dyn-exit').value === 'on') {
+                        monitorDynamicExit();
+                    }
+                }
+
+                if (data.msg_type === 'buy') {
+                    activeContractId = data.buy.contract_id;
+                    const type = data.buy.shortcode.includes('CALL') ? 'RISE' : 'FALL';
+                    currentSignalDirection = type === 'RISE' ? 'CALL' : 'PUT';
+                    writeLog(`🛒 Ordem Confirmada na Abertura: ${type} | Risco: $${stats.currentStake.toFixed(2)}`, type === 'RISE' ? 'call' : 'put');
+                    ws.send(JSON.stringify({ proposal_open_contract: 1, contract_id: activeContractId, subscribe: 1 }));
+                }
+
+                if (data.msg_type === 'sell') {
+                    writeLog(`⚡ Saída Antecipada Executada: Contrato vendido com sucesso.`, 'alert');
+                }
+
+                if (data.msg_type === 'proposal_open_contract') {
+                    const contract = data.proposal_open_contract;
+                    if (contract.is_sold) {
+                        botState = 'RUNNING'; activeContractId = null;
+                        stats.currentOpenProfit = 0; 
+                        let pnl = parseFloat(contract.profit);
+                        stats.profit += pnl; stats.totalTrades++; account.balance += pnl;
+
+                        if (pnl > 0) { stats.wins++; writeLog(`✅ WIN! Lucro: +$${pnl.toFixed(2)}`, 'call'); handleRiskManagement('WIN'); } 
+                        else { stats.losses++; writeLog(`❌ LOSS. Perda: $${pnl.toFixed(2)}`, 'put'); handleRiskManagement('LOSS'); }
+                        
+                        updateDashboard(); checkLimits();
+                    } else {
+                        stats.currentOpenProfit = parseFloat(contract.profit || 0);
+                    }
+                }
+            };
+        }
+
+        // --- FEATURE V5: CARREGAR HISTÓRICO GLOBAL (ON CHANGE) ---
+        function fetchMarketHistory() {
+            if(!isConnected) return;
+            let market = document.getElementById('cfg-market').value;
+            let tfAnalysis = document.getElementById('cfg-tf-analysis').value;
+            if(!market) return;
+
+            writeLog(`🔄 Trocando stream para ${market} em ${parseInt(tfAnalysis)/60}m...`, 'info');
+            ws.send(JSON.stringify({ forget_all: ['ticks', 'candles'] }));
+            
+            marketData.candles =[];
+            document.getElementById('ind-trend').innerText = 'Carregando...';
+            document.getElementById('prob-text').innerText = 'Aguardando dados...';
+            document.getElementById('ind-trend').className = 'badge bg-blue';
+
+            ws.send(JSON.stringify({
+                ticks_history: market,
+                end: 'latest',
+                count: 100,
+                style: 'candles',
+                granularity: parseInt(tfAnalysis),
+                subscribe: 1
+            }));
+        }
+
+        // --- CÁLCULO DE EMAS INSTITUCIONAIS ---
+        function calculateEMAs(candles) {
+            if (candles.length < 50) return { ema9: 0, ema21: 0, ema50: 0 };
+            const calc = (period) => {
+                let k = 2 / (period + 1);
+                let ema = parseFloat(candles[0].close);
+                for (let i = 1; i < candles.length; i++) {
+                    ema = (parseFloat(candles[i].close) * k) + (ema * (1 - k));
+                }
+                return ema;
+            };
+            return { ema9: calc(9), ema21: calc(21), ema50: calc(50) };
+        }
+
+        // --- MOTOR OHLC PRINCIPAL REFATORADO (SEPARA UI DE EXECUÇÃO) ---
+        function updateDashboardAnalysis(triggerTradeExecution) {
+            if (marketData.candles.length < 50) return; 
+            const c = marketData.candles;
+            // c[length-1] é a vela formando. c[length-2] é a recém fechada.
+            const c1 = c[c.length - 2]; 
+            const c2 = c[c.length - 3];
+            const c3 = c[c.length - 4];
+            
+            // 1. FILTRO DE MERCADO LATERAL UNIVERSAL (Ratio-based = Funciona em Forex e Índices)
+            let boxHigh = 0, boxLow = 999999, avgBody = 0;
+            for(let i=2; i<=11; i++) {
+                boxHigh = Math.max(boxHigh, parseFloat(c[c.length-i].high));
+                boxLow = Math.min(boxLow, parseFloat(c[c.length-i].low));
+                avgBody += Math.abs(parseFloat(c[c.length-i].close) - parseFloat(c[c.length-i].open));
+            }
+            avgBody = avgBody / 10;
+            let range = boxHigh - boxLow;
+            
+            marketData.lateral = (range < avgBody * 2.5); 
+
+            if (marketData.lateral) {
+                document.getElementById('ind-smc').className = 'badge bg-red'; document.getElementById('ind-smc').innerText = 'Mercado Lateral/Choppy';
+                document.getElementById('ui-market-state').innerText = 'Consolidação';
+            } else {
+                document.getElementById('ind-smc').className = 'badge bg-green'; document.getElementById('ind-smc').innerText = 'Bom Fluxo / Direcional';
+            }
+
+            // 2. TENDÊNCIA ESTRUTURAL
+            let sum = 0; for(let i=2; i<=15; i++) sum += parseFloat(c[c.length-i].close);
+            let sma14 = sum / 14;
+            let isUptrend = parseFloat(c1.close) > sma14;
+            marketData.trend = isUptrend ? 'UP' : 'DOWN';
+            document.getElementById('ui-market-state').innerText = isUptrend ? 'Tendência Alta' : 'Tendência Baixa';
+
+            // 3. DICIONÁRIO DE CANDLESTICKS
+            let pattern = detectCandlestickPattern(c1, c2, c3);
+            document.getElementById('ind-candle').className = pattern.dir === 'CALL' ? 'badge bg-green' : (pattern.dir === 'PUT' ? 'badge bg-red' : 'badge bg-blue');
+            document.getElementById('ind-candle').innerText = pattern.name;
+
+            // 4. CÁLCULO DE PROBABILIDADE
+            let prob = 40; 
+            let finalSignal = pattern.dir;
+            let reasons =[];
+
+            if (finalSignal !== 'NONE') {
+                if ((finalSignal === 'CALL' && isUptrend) || (finalSignal === 'PUT' && !isUptrend)) {
+                    prob += 30; reasons.push('Padrão Alinhado');
+                } else {
+                    prob += 10; reasons.push('Padrão Contra-Tendência');
+                }
+                prob += pattern.weight;
+                reasons.push(pattern.name);
+                if (!marketData.lateral) { prob += 15; reasons.push('Volume Confirmado'); }
+            } else {
+                let isC1Green = parseFloat(c1.close) > parseFloat(c1.open);
+                if(isUptrend && isC1Green) { prob += 25; finalSignal = 'CALL'; reasons.push('Fluxo de Alta'); }
+                else if(!isUptrend && !isC1Green) { prob += 25; finalSignal = 'PUT'; reasons.push('Fluxo de Baixa'); }
+            }
+
+            // 5. CAMADA INSTITUCIONAL (EMAs e Momentum)
+            let confluenceScore = 0;
+            let closedCandles = marketData.candles.slice(0, marketData.candles.length - 1);
+            let emas = calculateEMAs(closedCandles);
+            
+            let emaAlignedUp = emas.ema9 > emas.ema21 && emas.ema21 > emas.ema50;
+            let emaAlignedDown = emas.ema9 < emas.ema21 && emas.ema21 < emas.ema50;
+
+            let currentRange = parseFloat(c1.high) - parseFloat(c1.low);
+            let avgRange = 0;
+            for(let i=2; i<=11; i++) { avgRange += (parseFloat(c[c.length-i].high) - parseFloat(c[c.length-i].low)); }
+            avgRange /= 10;
+            let isStrongMomentum = currentRange > (avgRange * 1.3);
+            let isWeakMomentum = currentRange < (avgRange * 0.7);
+
+            let breaksHigh = parseFloat(c1.close) > parseFloat(c2.high);
+            let breaksLow = parseFloat(c1.close) < parseFloat(c2.low);
+
+            if (finalSignal === 'CALL') {
+                if (emaAlignedUp) confluenceScore += 5;
+                if (breaksHigh) confluenceScore += 5;
+            } else if (finalSignal === 'PUT') {
+                if (emaAlignedDown) confluenceScore += 5;
+                if (breaksLow) confluenceScore += 5;
+            }
+
+            if (isStrongMomentum) {
+                confluenceScore += 5;
+                document.getElementById('ind-vol').className = 'badge bg-green'; document.getElementById('ind-vol').innerText = 'Forte Momentum';
+            } else if (isWeakMomentum) {
+                confluenceScore -= 2;
+                document.getElementById('ind-vol').className = 'badge bg-blue'; document.getElementById('ind-vol').innerText = 'Momento Fraco';
+            } else {
+                document.getElementById('ind-vol').className = 'badge bg-blue'; document.getElementById('ind-vol').innerText = 'Normal';
+            }
+
+            prob += confluenceScore;
+            prob = Math.min(prob, 100); 
+            
+            // FEEDBACK VISUAL FINAL DA VELA
+            document.getElementById('prob-fill').style.width = `${prob}%`;
+            document.getElementById('prob-fill').style.background = prob >= 75 ? 'var(--green-profit)' : (prob >= 60 ? 'var(--yellow-alert)' : 'var(--red-loss)');
+            document.getElementById('prob-text').innerText = `${prob}% | Sinal: ${finalSignal}`;
+
+            // 6. CHECAGEM DE EXECUÇÃO DE TRADE
+            if (triggerTradeExecution && botState === 'RUNNING') {
+                let profile = document.getElementById('cfg-profile').value;
+                if (marketData.lateral && profile === 'secure') {
+                    writeLog(`🚫 Filtro Seguro: Mercado lateral detectado. Operação ignorada.`, 'alert');
+                    return; 
+                }
+
+                let mode = document.getElementById('cfg-mode').value;
+                let probLimit = profile === 'secure' ? 75 : 60; 
+
+                if (mode === 'manual') {
+                    writeLog(`🔔 Sinal: ${finalSignal} | Prob: ${prob}% | Motivos: ${reasons.join(', ')}`, 'info');
+                    document.getElementById('manual-controls').style.opacity = '1'; document.getElementById('manual-controls').style.pointerEvents = 'auto';
+                } else {
+                    if (prob >= probLimit && finalSignal !== 'NONE') {
+                        writeLog(`⚡ Entrada Engatilhada (Perfil ${profile.toUpperCase()}): ${finalSignal} | Prob: ${prob}%`, 'info');
+                        executeTrade(finalSignal);
+                    }
+                }
+            }
+        }
+
+        // --- DICIONÁRIO DE CANDLESTICKS EXISTENTE MANTIDO ---
+        function detectCandlestickPattern(c1, c2, c3) {
+            const body = (c) => Math.abs(parseFloat(c.close) - parseFloat(c.open));
+            const isGrn = (c) => parseFloat(c.close) > parseFloat(c.open);
+            const isRed = (c) => parseFloat(c.close) < parseFloat(c.open);
+            const upWick = (c) => parseFloat(c.high) - Math.max(parseFloat(c.open), parseFloat(c.close));
+            const dnWick = (c) => Math.min(parseFloat(c.open), parseFloat(c.close)) - parseFloat(c.low);
+            const total = (c) => parseFloat(c.high) - parseFloat(c.low);
+            const mid = (c) => (parseFloat(c.open) + parseFloat(c.close)) / 2;
+
+            if (dnWick(c1) > body(c1)*2 && upWick(c1) < body(c1)*0.2 && isRed(c2)) return { name: 'Hammer', dir: 'CALL', weight: 20 };
+            if (upWick(c1) > body(c1)*2 && dnWick(c1) < body(c1)*0.2 && isRed(c2) && c1.close < c2.open) return { name: 'Inverted Hammer', dir: 'CALL', weight: 15 };
+            if (isRed(c2) && isGrn(c1) && c1.close > c2.open && c1.open <= c2.close) return { name: 'Bullish Engulfing', dir: 'CALL', weight: 25 };
+            if (isRed(c2) && isGrn(c1) && c1.open < c2.low && c1.close > mid(c2)) return { name: 'Piercing Line', dir: 'CALL', weight: 20 };
+            if (isRed(c3) && body(c2) < total(c2)*0.3 && isGrn(c1) && c1.close > mid(c3)) return { name: 'Morning Star', dir: 'CALL', weight: 25 };
+            if (isGrn(c3) && isGrn(c2) && isGrn(c1) && c1.close > c2.close && c2.close > c3.close) return { name: 'Three White Soldiers', dir: 'CALL', weight: 20 };
+            if (Math.abs(c1.low - c2.low) < 0.0005 && isRed(c2) && isGrn(c1)) return { name: 'Tweezer Bottom', dir: 'CALL', weight: 15 };
+            if (isRed(c2) && isGrn(c1) && c1.open > c2.close && c1.close < c2.open) return { name: 'Bullish Harami', dir: 'CALL', weight: 15 };
+
+            if (upWick(c1) > body(c1)*2 && dnWick(c1) < body(c1)*0.2 && isGrn(c2)) return { name: 'Shooting Star', dir: 'PUT', weight: 20 };
+            if (dnWick(c1) > body(c1)*2 && upWick(c1) < body(c1)*0.2 && isGrn(c2) && c1.close > c2.open) return { name: 'Hanging Man', dir: 'PUT', weight: 15 };
+            if (isGrn(c2) && isRed(c1) && c1.close < c2.open && c1.open >= c2.close) return { name: 'Bearish Engulfing', dir: 'PUT', weight: 25 };
+            if (isGrn(c2) && isRed(c1) && c1.open > c2.high && c1.close < mid(c2)) return { name: 'Dark Cloud Cover', dir: 'PUT', weight: 20 };
+            if (isGrn(c3) && body(c2) < total(c2)*0.3 && isRed(c1) && c1.close < mid(c3)) return { name: 'Evening Star', dir: 'PUT', weight: 25 };
+            if (isRed(c3) && isRed(c2) && isRed(c1) && c1.close < c2.close && c2.close < c3.close) return { name: 'Three Black Crows', dir: 'PUT', weight: 20 };
+            if (Math.abs(c1.high - c2.high) < 0.0005 && isGrn(c2) && isRed(c1)) return { name: 'Tweezer Top', dir: 'PUT', weight: 15 };
+            if (isGrn(c2) && isRed(c1) && c1.open < c2.close && c1.close > c2.open) return { name: 'Bearish Harami', dir: 'PUT', weight: 15 };
+
+            if (body(c1) < total(c1)*0.1) return { name: 'Doji', dir: 'NONE', weight: 0 };
+            if (body(c1) > total(c1)*0.9) return { name: 'Marubozu', dir: 'NONE', weight: 5 };
+            if (c1.high < c2.high && c1.low > c2.low) return { name: 'Inside Bar', dir: 'NONE', weight: 0 };
+
+            return { name: 'Padrão Não Identificado', dir: 'NONE', weight: 0 };
+        }
+
+        function updateVisualAnalysis() {
+            if (marketData.candles.length < 2) return;
+            const c0 = marketData.candles[marketData.candles.length - 1];
+            let isGrn = parseFloat(c0.close) > parseFloat(c0.open);
+            document.getElementById('ind-trend').className = isGrn ? 'badge bg-green' : 'badge bg-red';
+            document.getElementById('ind-trend').innerText = isGrn ? 'Formando Alta' : 'Formando Baixa';
+        }
+
+        function monitorDynamicExit() {
+            if (!activeContractId || stats.currentOpenProfit <= 0) return; 
+            let c0 = marketData.candles[marketData.candles.length - 1]; 
+            let c1 = marketData.candles[marketData.candles.length - 2]; 
+
+            let isC0Green = parseFloat(c0.close) > parseFloat(c0.open);
+            let isC0Red = parseFloat(c0.close) < parseFloat(c0.open);
+            let breaksC1Low = parseFloat(c0.close) < parseFloat(c1.low);
+            let breaksC1High = parseFloat(c0.close) > parseFloat(c1.high);
+
+            let bodyC0 = Math.abs(parseFloat(c0.close) - parseFloat(c0.open));
+            let bodyC1 = Math.abs(parseFloat(c1.close) - parseFloat(c1.open));
+            let contraryMomentum = bodyC0 > (bodyC1 * 0.8); 
+
+            if (currentSignalDirection === 'CALL' && isC0Red && breaksC1Low && contraryMomentum) {
+                writeLog(`⚠️ Reversão Confirmada! Protegendo lucro antecipadamente.`, 'alert');
+                ws.send(JSON.stringify({ sell: activeContractId, price: 0 }));
+                activeContractId = null; 
+            } else if (currentSignalDirection === 'PUT' && isC0Green && breaksC1High && contraryMomentum) {
+                writeLog(`⚠️ Reversão Confirmada! Protegendo lucro antecipadamente.`, 'alert');
+                ws.send(JSON.stringify({ sell: activeContractId, price: 0 }));
+                activeContractId = null;
+            }
+        }
+
+        // --- EXECUÇÃO DE ORDEM EXISTENTE MANTIDA ---
+        function executeTrade(contractType) {
+            if (botState !== 'RUNNING') return;
+            botState = 'TRADING'; updateDashboard();
+
+            let market = document.getElementById('cfg-market').value;
+            let tfSeconds = parseInt(document.getElementById('cfg-tf-analysis').value);
+            let durationMins = tfSeconds / 60; 
+
+            const buyPayload = {
+                buy: 1, price: 1000,
+                parameters: {
+                    amount: parseFloat(stats.currentStake.toFixed(2)),
+                    basis: "stake", contract_type: contractType, currency: account.currency,
+                    duration: durationMins, duration_unit: "m", symbol: market
+                }
+            };
+            ws.send(JSON.stringify(buyPayload));
+        }
+
+        function forceTrade(type) {
+            if (botState !== 'RUNNING') { alert("Bot precisa estar INICIADO para operar."); return; }
+            writeLog(`👤 Ação Manual: ${type}`, 'info'); executeTrade(type);
+        }
+
+        // --- GESTÃO DE RISCO ORIGINAL MANTIDA ---
+        function calculateStake() {
+            let type = document.getElementById('cfg-stake-type').value; let val = parseFloat(document.getElementById('cfg-stake').value);
+            return type === 'fixed' ? val : (account.balance * (val / 100));
+        }
+
+        function handleRiskManagement(result) {
+            let config = document.getElementById('cfg-martingale').value;
+            if (result === 'LOSS' && config === 'martingale') { stats.currentStake = stats.currentStake * 2; writeLog(`⚠️ Martingale ativado. Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
+            else if (result === 'WIN' && config === 'anti') { stats.currentStake = stats.currentStake * 2; writeLog(`📈 Anti-Martingale (Soros). Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
+            else { stats.currentStake = stats.initialStake; }
+        }
+
+        function checkLimits() {
+            let sl = parseFloat(document.getElementById('cfg-sl').value); let tp = parseFloat(document.getElementById('cfg-tp').value);
+            if (stats.profit <= -sl) { writeLog(`🛑 STOP LOSS DIÁRIO ATINGIDO (-$${sl}). Parando o bot.`, 'alert'); botState = 'STOPPED'; updateDashboard(); }
+            if (stats.profit >= tp) { writeLog(`🏆 TAKE PROFIT DIÁRIO ATINGIDO (+$${tp}). Meta batida!`, 'info'); botState = 'STOPPED'; updateDashboard(); }
+        }
+
+        // --- CONTROLES DO BOT ---
+        function toggleBot(start) {
+            if (start) {
+                stats.initialStake = calculateStake();
+                if(stats.currentStake === 0) stats.currentStake = stats.initialStake;
+
+                let mtfAtivo = document.getElementById('cfg-mtf').value === 'on';
+                document.getElementById('mtf-badge').style.display = mtfAtivo ? 'inline-block' : 'none';
+                
+                botState = 'RUNNING'; document.getElementById('btn-start').disabled = true; document.getElementById('btn-pause').disabled = false;
+                writeLog(`▶️ Bot Iniciado. Sincronizando operações a cada fechamento de vela.`, 'info');
+            } else {
+                botState = 'PAUSED'; document.getElementById('btn-start').disabled = false; document.getElementById('btn-pause').disabled = true;
+                writeLog(`⏸ Bot Pausado. Dashboard continuará recebendo stream ao vivo.`, 'alert');
+            }
+            updateDashboard();
+        }
+
+        function emergencyStop() {
+            botState = 'STOPPED'; activeContractId = null;
+            document.getElementById('btn-start').disabled = false; document.getElementById('btn-pause').disabled = true;
+            writeLog(`⛔ PARADA DE EMERGÊNCIA ACIONADA. Stream de Dashboard continua ativo.`, 'alert'); updateDashboard();
+        }
+    </script>
+</body>
+</html>
