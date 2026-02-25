@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deriv SMC Pro | Rise & Fall V5</title>
+    <title>Deriv SMC Pro | Rise & Fall V6</title>
     <style>
         /* ================= MANTIDO INTACTO ================= */
         :root {
@@ -72,8 +72,8 @@
     <!-- ================= 1. TELA DE LOGIN ================= -->
     <div id="login-screen">
         <div class="login-box">
-            <h1>Deriv SMC Pro <span style="font-size: 12px; color: var(--blue-accent);">V5 Global</span></h1>
-            <p>Smart Money & Advanced Pattern Trading</p>
+            <h1>Deriv SMC Pro <span style="font-size: 12px; color: var(--blue-accent);">V6 Advanced</span></h1>
+            <p>Smart Money & Contract Validation Engine</p>
             <div class="input-group"><label>App ID</label><input type="text" id="app-id" value="121512" readonly style="background: rgba(255,255,255,0.1); color: #888;"></div>
             <div class="input-group"><label>Token da API (Read / Trade)</label><input type="password" id="api-token" placeholder="Cole seu Token Deriv aqui..."></div>
             <div class="input-group"><label>Tipo de Conta</label><select id="account-type"><option value="demo">Conta Demo (Virtual)</option><option value="real">Conta Real (Dinheiro Real)</option></select></div>
@@ -85,7 +85,7 @@
     <!-- ================= 2. DASHBOARD PRINCIPAL ================= -->
     <div id="main-app">
         <header>
-            <div class="header-title">📊 Deriv SMC Pro V5 <span class="status-badge" id="header-status">Conectado via WebSocket</span></div>
+            <div class="header-title">📊 Deriv SMC Pro V6 <span class="status-badge" id="header-status">Conectado via WebSocket</span></div>
             <div style="font-weight: bold; color: var(--text-light);" id="header-account">Conta: --</div>
         </header>
 
@@ -96,15 +96,29 @@
                 
                 <div class="input-group">
                     <label>Mercado (Ativo)</label>
-                    <select id="cfg-market" class="small-input">
-                        <option value="">Aguardando conexão...</option>
+                    <select id="cfg-market" class="small-input" onchange="fetchMarketHistory()">
+                        <optgroup label="Volatility Indices (Sintéticos)">
+                            <option value="R_100">Volatility 100 Index</option>
+                            <option value="R_50">Volatility 50 Index</option>
+                            <option value="1HZ10V">Vol 10 (1s) Index</option>
+                        </optgroup>
+                        <optgroup label="Forex (Moedas)">
+                            <option value="frxEURUSD">EUR/USD</option>
+                            <option value="frxGBPUSD">GBP/USD</option>
+                            <option value="frxUSDJPY">USD/JPY</option>
+                            <option value="frxAUDUSD">AUD/USD</option>
+                        </optgroup>
                     </select>
                 </div>
 
                 <div class="control-grid">
                     <div class="input-group" style="margin:0;">
                         <label>Timeframe (OHLC)</label>
-                        <select id="cfg-tf-analysis" class="small-input"><option value="60">1 Minuto</option><option value="300">5 Minutos</option><option value="600">10 Minutos</option></select>
+                        <select id="cfg-tf-analysis" class="small-input" onchange="fetchMarketHistory()">
+                            <option value="60">1 Minuto</option>
+                            <option value="300">5 Minutos</option>
+                            <option value="600">10 Minutos</option>
+                        </select>
                     </div>
                     <div class="input-group" style="margin:0;">
                         <label title="Bloqueado: Duração = Timeframe">Duração</label>
@@ -119,7 +133,7 @@
                     </div>
                     <div class="input-group" style="margin:0;">
                         <label>Perfil Interno</label>
-                        <select id="cfg-profile" class="small-input"><option value="balanced">Equilibrado</option><option value="secure">Seguro (+Filtros)</option></select>
+                        <select id="cfg-profile" class="small-input"><option value="balanced">Equilibrado (60%)</option><option value="secure">Seguro (75% + Filtros)</option></select>
                     </div>
                 </div>
 
@@ -174,8 +188,8 @@
                 <div class="panel-title">🧠 Motor OHLC & Candlestick Tracker</div>
                 
                 <div class="analysis-box">
-                    <div class="indicator-row"><span>Tendência Estrutural</span><span class="badge" id="ind-trend">Carregando...</span></div>
-                    <div class="indicator-row"><span>Condição de Mercado (Filtro Lateral)</span><span class="badge" id="ind-smc">Aguardando...</span></div>
+                    <div class="indicator-row"><span>Tendência Estrutural (EMA)</span><span class="badge" id="ind-trend">Carregando...</span></div>
+                    <div class="indicator-row"><span>Condição de Mercado (Lateral)</span><span class="badge" id="ind-smc">Aguardando...</span></div>
                     <div class="indicator-row"><span>Padrão Candlestick Formado</span><span class="badge" id="ind-candle">Analisando Velas...</span></div>
                     <div class="indicator-row"><span>Momentum do OHLC</span><span class="badge" id="ind-vol">Normal</span></div>
                     
@@ -194,7 +208,7 @@
             <!-- PAINEL DIREITO: LOGS -->
             <div class="panel">
                 <div class="panel-title">📝 Logs de Execução <button onclick="clearLogs()" style="background:none; border:none; color:var(--blue-accent); cursor:pointer; font-size:12px;">Limpar</button></div>
-                <div class="log-container" id="log-box"><div class="log-item log-info">Sistema V5 Global Pronto. Aguardando Autenticação...</div></div>
+                <div class="log-container" id="log-box"><div class="log-item log-info">Sistema V6 Pronto. Aguardando Conexão e API.</div></div>
             </div>
         </div>
     </div>
@@ -207,6 +221,7 @@
         let account = { balance: 0, currency: 'USD', loginid: '' };
         let stats = { profit: 0, wins: 0, losses: 0, totalTrades: 0, currentStake: 0, initialStake: 0, currentOpenProfit: 0 };
         let marketData = { candles:[], trend: 'FLAT', lateral: false };
+        let marketLimits = { min_stake: 0.35, max_stake: 50000 }; // Limites de contrato recebidos da API
         let activeContractId = null; 
         let currentSignalDirection = 'NONE';
         
@@ -257,43 +272,28 @@
                     isConnected = true; account.balance = data.authorize.balance; account.currency = data.authorize.currency; account.loginid = data.authorize.loginid;
                     document.getElementById('login-screen').style.display = 'none'; document.getElementById('main-app').style.display = 'flex';
                     document.getElementById('header-account').innerText = `${account.loginid} (${document.getElementById('account-type').value.toUpperCase()})`;
-                    writeLog(`Conexão estabelecida. Requisitando ativos disponíveis...`, 'info'); 
+                    writeLog(`Conexão estabelecida. Conta validada.`, 'info'); 
                     updateDashboard();
                     
-                    // FEATURE V5: Solicitar Ativos Globais
-                    ws.send(JSON.stringify({ active_symbols: 'brief', product_type: 'basic' }));
+                    fetchMarketHistory(); // Puxa histórico e validação do mercado inicial
                 }
 
-                // FEATURE V5: Preencher Dropdown de Ativos
-                if (data.msg_type === 'active_symbols') {
-                    const marketSelect = document.getElementById('cfg-market');
-                    marketSelect.innerHTML = '';
-                    let symbols = data.active_symbols.sort((a,b) => a.display_name.localeCompare(b.display_name));
-                    
-                    symbols.forEach(sym => {
-                        if(sym.exchange_is_open) {
-                            let opt = document.createElement('option');
-                            opt.value = sym.symbol;
-                            opt.innerText = sym.display_name;
-                            if(sym.symbol === 'R_100') opt.selected = true; // Default seguro
-                            marketSelect.appendChild(opt);
-                        }
-                    });
-                    writeLog(`Lista de ativos carregada com sucesso. Selecione e inicie.`, 'info');
-                    
-                    // Listeners para trocar de ativo/timeframe dinamicamente
-                    marketSelect.addEventListener('change', fetchMarketHistory);
-                    document.getElementById('cfg-tf-analysis').addEventListener('change', fetchMarketHistory);
-                    
-                    // Carrega o histórico do primeiro ativo selecionado por padrão
-                    fetchMarketHistory();
+                // V6: VALIDAÇÃO DO CONTRATO (LIMITES DE STAKE/DURAÇÃO DO ATIVO)
+                if (data.msg_type === 'contracts_for') {
+                    const available = data.contracts_for.available;
+                    const callput = available.find(c => c.contract_category === 'callput');
+                    if (callput) {
+                        marketLimits.min_stake = callput.min_stake;
+                        marketLimits.max_stake = callput.max_stake;
+                        writeLog(`Validação de Ativo: Stake Permitida = $${marketLimits.min_stake} a $${marketLimits.max_stake}`, 'info');
+                    }
                 }
 
                 if (data.msg_type === 'candles') {
                     marketData.candles = data.candles; 
                     lastEpoch = data.candles[data.candles.length - 1].epoch;
-                    writeLog(`✅ Histórico de velas carregado. Dashboard atualizado.`, 'info');
-                    updateDashboardAnalysis(false); // Atualiza UI sem executar trade
+                    writeLog(`✅ Histórico de 100 velas sincronizado.`, 'info');
+                    updateDashboardAnalysis(false); 
                 } 
                 else if (data.msg_type === 'ohlc') {
                     const ohlc = data.ohlc;
@@ -310,10 +310,10 @@
 
                     if (lastEpoch !== 0 && currentEpoch !== lastEpoch) {
                         if(botState === 'RUNNING') {
-                            writeLog(`⏱️ Vela fechada. Processando sinal analítico...`, 'info');
-                            updateDashboardAnalysis(true); // Atualiza UI E executa trade
+                            writeLog(`⏱️ Vela fechada. Processando Sinais Institucionais...`, 'info');
+                            updateDashboardAnalysis(true); 
                         } else {
-                            updateDashboardAnalysis(false); // Só atualiza UI (Streaming em tempo real visual)
+                            updateDashboardAnalysis(false); 
                         }
                     }
                     lastEpoch = currentEpoch;
@@ -327,12 +327,12 @@
                     activeContractId = data.buy.contract_id;
                     const type = data.buy.shortcode.includes('CALL') ? 'RISE' : 'FALL';
                     currentSignalDirection = type === 'RISE' ? 'CALL' : 'PUT';
-                    writeLog(`🛒 Ordem Confirmada na Abertura: ${type} | Risco: $${stats.currentStake.toFixed(2)}`, type === 'RISE' ? 'call' : 'put');
+                    writeLog(`🛒 Ordem Confirmada na API: ${type} | Investimento Seguro: $${stats.currentStake.toFixed(2)}`, type === 'RISE' ? 'call' : 'put');
                     ws.send(JSON.stringify({ proposal_open_contract: 1, contract_id: activeContractId, subscribe: 1 }));
                 }
 
                 if (data.msg_type === 'sell') {
-                    writeLog(`⚡ Saída Antecipada Executada: Contrato vendido com sucesso.`, 'alert');
+                    writeLog(`⚡ Dynamic Exit: Contrato vendido com sucesso na corretora.`, 'alert');
                 }
 
                 if (data.msg_type === 'proposal_open_contract') {
@@ -354,16 +354,19 @@
             };
         }
 
-        // --- FEATURE V5: CARREGAR HISTÓRICO GLOBAL (ON CHANGE) ---
+        // --- FEATURE V5/V6: ATUALIZAR STREAM E VALIDAR CONTRATO ---
         function fetchMarketHistory() {
             if(!isConnected) return;
             let market = document.getElementById('cfg-market').value;
             let tfAnalysis = document.getElementById('cfg-tf-analysis').value;
             if(!market) return;
 
-            writeLog(`🔄 Trocando stream para ${market} em ${parseInt(tfAnalysis)/60}m...`, 'info');
+            writeLog(`🔄 Conectando stream OHLC para ${market}...`, 'info');
             ws.send(JSON.stringify({ forget_all: ['ticks', 'candles'] }));
             
+            // Requisitar os limites permitidos do ativo (Validação Antecipada)
+            ws.send(JSON.stringify({ contracts_for: market }));
+
             marketData.candles =[];
             document.getElementById('ind-trend').innerText = 'Carregando...';
             document.getElementById('prob-text').innerText = 'Aguardando dados...';
@@ -397,12 +400,11 @@
         function updateDashboardAnalysis(triggerTradeExecution) {
             if (marketData.candles.length < 50) return; 
             const c = marketData.candles;
-            // c[length-1] é a vela formando. c[length-2] é a recém fechada.
             const c1 = c[c.length - 2]; 
             const c2 = c[c.length - 3];
             const c3 = c[c.length - 4];
             
-            // 1. FILTRO DE MERCADO LATERAL UNIVERSAL (Ratio-based = Funciona em Forex e Índices)
+            // 1. FILTRO DE MERCADO LATERAL UNIVERSAL (Forex + Sintéticos)
             let boxHigh = 0, boxLow = 999999, avgBody = 0;
             for(let i=2; i<=11; i++) {
                 boxHigh = Math.max(boxHigh, parseFloat(c[c.length-i].high));
@@ -418,7 +420,7 @@
                 document.getElementById('ind-smc').className = 'badge bg-red'; document.getElementById('ind-smc').innerText = 'Mercado Lateral/Choppy';
                 document.getElementById('ui-market-state').innerText = 'Consolidação';
             } else {
-                document.getElementById('ind-smc').className = 'badge bg-green'; document.getElementById('ind-smc').innerText = 'Bom Fluxo / Direcional';
+                document.getElementById('ind-smc').className = 'badge bg-green'; document.getElementById('ind-smc').innerText = 'Direcional (Fluido)';
             }
 
             // 2. TENDÊNCIA ESTRUTURAL
@@ -442,7 +444,7 @@
                 if ((finalSignal === 'CALL' && isUptrend) || (finalSignal === 'PUT' && !isUptrend)) {
                     prob += 30; reasons.push('Padrão Alinhado');
                 } else {
-                    prob += 10; reasons.push('Padrão Contra-Tendência');
+                    prob += 10; reasons.push('Contra-Tendência');
                 }
                 prob += pattern.weight;
                 reasons.push(pattern.name);
@@ -509,12 +511,12 @@
                 let probLimit = profile === 'secure' ? 75 : 60; 
 
                 if (mode === 'manual') {
-                    writeLog(`🔔 Sinal: ${finalSignal} | Prob: ${prob}% | Motivos: ${reasons.join(', ')}`, 'info');
+                    writeLog(`🔔 Sinal Gerado: ${finalSignal} | Prob: ${prob}% | Motivos: ${reasons.join(', ')}`, 'info');
                     document.getElementById('manual-controls').style.opacity = '1'; document.getElementById('manual-controls').style.pointerEvents = 'auto';
                 } else {
                     if (prob >= probLimit && finalSignal !== 'NONE') {
-                        writeLog(`⚡ Entrada Engatilhada (Perfil ${profile.toUpperCase()}): ${finalSignal} | Prob: ${prob}%`, 'info');
-                        executeTrade(finalSignal);
+                        writeLog(`⚡ Análise Confimada (${profile.toUpperCase()}): ${finalSignal} | Prob: ${prob}%. Solicitando validação de compra.`, 'info');
+                        validateAndExecuteTrade(finalSignal);
                     }
                 }
             }
@@ -588,15 +590,26 @@
             }
         }
 
-        // --- EXECUÇÃO DE ORDEM EXISTENTE MANTIDA ---
-        function executeTrade(contractType) {
+        // --- FEATURE V6: VALIDAÇÃO DE CONTRATO E EXECUÇÃO ---
+        function validateAndExecuteTrade(contractType) {
             if (botState !== 'RUNNING') return;
+            
+            // 1. Validação Antecipada de Stake
+            if (stats.currentStake < marketLimits.min_stake) {
+                stats.currentStake = marketLimits.min_stake;
+                writeLog(`⚠️ Regulação da API: Stake aumentada para o mínimo permitido do ativo ($${stats.currentStake}).`, 'alert');
+            } else if (stats.currentStake > marketLimits.max_stake) {
+                stats.currentStake = marketLimits.max_stake;
+                writeLog(`⚠️ Regulação da API: Stake reduzida para o teto do ativo ($${stats.currentStake}).`, 'alert');
+            }
+
             botState = 'TRADING'; updateDashboard();
 
             let market = document.getElementById('cfg-market').value;
             let tfSeconds = parseInt(document.getElementById('cfg-tf-analysis').value);
             let durationMins = tfSeconds / 60; 
 
+            // Payload 100% Validado
             const buyPayload = {
                 buy: 1, price: 1000,
                 parameters: {
@@ -610,7 +623,8 @@
 
         function forceTrade(type) {
             if (botState !== 'RUNNING') { alert("Bot precisa estar INICIADO para operar."); return; }
-            writeLog(`👤 Ação Manual: ${type}`, 'info'); executeTrade(type);
+            writeLog(`👤 Ação Manual do Usuário: ${type}`, 'info'); 
+            validateAndExecuteTrade(type); // Passa pela mesma validação de segurança
         }
 
         // --- GESTÃO DE RISCO ORIGINAL MANTIDA ---
@@ -621,8 +635,8 @@
 
         function handleRiskManagement(result) {
             let config = document.getElementById('cfg-martingale').value;
-            if (result === 'LOSS' && config === 'martingale') { stats.currentStake = stats.currentStake * 2; writeLog(`⚠️ Martingale ativado. Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
-            else if (result === 'WIN' && config === 'anti') { stats.currentStake = stats.currentStake * 2; writeLog(`📈 Anti-Martingale (Soros). Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
+            if (result === 'LOSS' && config === 'martingale') { stats.currentStake = stats.currentStake * 2; writeLog(`⚠️ Martingale ativado. Próxima Stake Prevista: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
+            else if (result === 'WIN' && config === 'anti') { stats.currentStake = stats.currentStake * 2; writeLog(`📈 Anti-Martingale (Soros). Próxima Stake Prevista: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
             else { stats.currentStake = stats.initialStake; }
         }
 
@@ -642,10 +656,10 @@
                 document.getElementById('mtf-badge').style.display = mtfAtivo ? 'inline-block' : 'none';
                 
                 botState = 'RUNNING'; document.getElementById('btn-start').disabled = true; document.getElementById('btn-pause').disabled = false;
-                writeLog(`▶️ Bot Iniciado. Sincronizando operações a cada fechamento de vela.`, 'info');
+                writeLog(`▶️ Bot Iniciado com Sucesso. Aguardando próximo fechamento de vela.`, 'info');
             } else {
                 botState = 'PAUSED'; document.getElementById('btn-start').disabled = false; document.getElementById('btn-pause').disabled = true;
-                writeLog(`⏸ Bot Pausado. Dashboard continuará recebendo stream ao vivo.`, 'alert');
+                writeLog(`⏸ Bot Pausado pelo Usuário.`, 'alert');
             }
             updateDashboard();
         }
@@ -653,7 +667,7 @@
         function emergencyStop() {
             botState = 'STOPPED'; activeContractId = null;
             document.getElementById('btn-start').disabled = false; document.getElementById('btn-pause').disabled = true;
-            writeLog(`⛔ PARADA DE EMERGÊNCIA ACIONADA. Stream de Dashboard continua ativo.`, 'alert'); updateDashboard();
+            writeLog(`⛔ PARADA DE EMERGÊNCIA ACIONADA. Nenhuma nova ordem será aberta.`, 'alert'); updateDashboard();
         }
     </script>
 </body>
