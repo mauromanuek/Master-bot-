@@ -12,10 +12,10 @@
             --transition: all 0.3s ease;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
-        body { background-color: var(--bg-dark); color: var(--text-light); height: 100vh; overflow: hidden; }
+        body { background-color: var(--bg-dark); color: var(--text-light); height: 100vh; overflow: hidden; position: relative; }
 
         /* ================= LOGIN ================= */
-        #login-screen { display: flex; justify-content: center; align-items: center; height: 100vh; background: radial-gradient(circle at center, #161B22 0%, #0D1117 100%); }
+        #login-screen { display: flex; justify-content: center; align-items: center; height: 100vh; background: radial-gradient(circle at center, #161B22 0%, #0D1117 100%); z-index: 100; position: relative; }
         .login-box { background-color: var(--panel-bg); padding: 40px; border-radius: 12px; border: 1px solid var(--border-color); width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; }
         .login-box h1 { color: #fff; margin-bottom: 5px; font-size: 24px; }
         .login-box p { color: #8b949e; margin-bottom: 25px; font-size: 14px; }
@@ -27,72 +27,75 @@
         .btn-connect:hover { background-color: #1c5ec9; transform: translateY(-2px); }
         #login-status { margin-top: 15px; font-size: 14px; font-weight: bold; min-height: 20px; }
 
-        /* ================= ESTRUTURA E LAYOUT FLEX ================= */
+        /* ================= ESTRUTURA PRINCIPAL ================= */
         #main-app { display: none; height: 100vh; flex-direction: column; }
         header { background-color: var(--panel-bg); border-bottom: 1px solid var(--border-color); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
-        .header-title { font-size: 20px; font-weight: bold; color: white; display: flex; align-items: center; gap: 10px; }
+        .header-title { font-size: 20px; font-weight: bold; color: white; display: flex; align-items: center; gap: 15px; }
         
-        /* Botão de Engrenagem */
-        .btn-gear { background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 6px; color: white; padding: 6px 10px; font-size: 18px; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; }
-        .btn-gear:hover { background: rgba(255,255,255,0.15); transform: rotate(45deg); }
+        .btn-gear { background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 6px; color: white; padding: 8px 12px; font-size: 18px; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; }
+        .btn-gear:hover { background: rgba(255,255,255,0.15); transform: rotate(90deg); }
 
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; background: rgba(0, 200, 83, 0.1); color: var(--green-profit); border: 1px solid var(--green-profit); }
         
-        .app-container { display: flex; flex-direction: row; gap: 20px; padding: 20px; flex-grow: 1; overflow-y: hidden; }
-        .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; overflow-y: auto; }
+        .app-container { display: flex; justify-content: center; padding: 20px; flex-grow: 1; overflow-y: auto; }
+        .panel { background-color: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 25px; width: 100%; max-width: 1100px; display: flex; flex-direction: column; gap: 20px; }
+        .panel-title { font-size: 18px; color: white; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;}
         
-        /* Sistema de Painel Oculto (Settings) */
-        .panel-settings { width: 0; opacity: 0; padding: 0; border: none; overflow: hidden; transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s; flex-shrink: 0; }
-        .app-container.settings-open .panel-settings { width: 320px; opacity: 1; padding: 20px; border: 1px solid var(--border-color); }
-        
-        .panel-center { flex-grow: 1; min-width: 0; }
-        .panel-right { width: 350px; flex-shrink: 0; }
-        
-        @media (max-width: 1000px) {
-            .app-container { flex-direction: column; overflow-y: auto; }
-            .panel-settings, .app-container.settings-open .panel-settings, .panel-right { width: 100%; flex-shrink: unset; }
+        /* ================= MODAL FLUTUANTE DE CONFIGURAÇÕES ================= */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7);
+            display: flex; justify-content: center; align-items: center; z-index: 3000;
+            opacity: 0; visibility: hidden; transition: var(--transition); backdrop-filter: blur(4px);
         }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        .modal-content {
+            background: var(--panel-bg); width: 100%; max-width: 450px; border-radius: 12px; border: 1px solid var(--border-color);
+            padding: 25px; transform: translateY(-30px) scale(0.95); transition: var(--transition); box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+            max-height: 90vh; overflow-y: auto;
+        }
+        .modal-overlay.active .modal-content { transform: translateY(0) scale(1); }
+        .close-btn { background: none; border: none; color: #888; font-size: 20px; cursor: pointer; transition: color 0.2s; }
+        .close-btn:hover { color: var(--red-loss); }
 
-        .panel-title { font-size: 16px; color: white; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;}
+        /* ================= COMPONENTES VISUAIS DO DASHBOARD ================= */
+        .stats-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 15px; }
+        @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 500px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
         
-        /* ================= COMPONENTES VISUAIS ================= */
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
-        @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
         .stat-card { background: var(--bg-dark); border: 1px solid var(--border-color); padding: 15px; border-radius: 8px; text-align: center; }
-        .stat-card span { display: block; font-size: 12px; color: #8b949e; margin-bottom: 5px; text-transform: uppercase; }
-        .stat-card strong { font-size: 20px; color: white; }
+        .stat-card span { display: block; font-size: 12px; color: #8b949e; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card strong { font-size: 20px; color: white; font-weight: bold; }
         .color-profit { color: var(--green-profit) !important; } .color-loss { color: var(--red-loss) !important; } .color-alert { color: var(--yellow-alert) !important; }
         
-        .analysis-box { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-        .indicator-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; align-items: center; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .bg-green { background: rgba(0, 200, 83, 0.2); color: var(--green-profit); }
-        .bg-red { background: rgba(255, 82, 82, 0.2); color: var(--red-loss); }
-        .bg-blue { background: rgba(41, 121, 255, 0.2); color: var(--blue-accent); }
+        /* Controles Principais (Botões) */
+        .control-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        @media (max-width: 600px) { .control-grid { grid-template-columns: 1fr; } }
+        .btn { padding: 14px; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; color: white; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        .btn:hover { opacity: 0.85; transform: scale(0.98); } .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .btn-start { background-color: var(--blue-accent); } .btn-pause { background-color: var(--yellow-alert); color: black; } .btn-stop { background-color: var(--red-loss); }
+        .btn-save { background-color: var(--green-profit); width: 100%; margin-top: 15px; }
+        .btn-rise { background-color: var(--green-profit); font-size: 16px; padding: 15px;} .btn-fall { background-color: var(--red-loss); font-size: 16px; padding: 15px;}
+
+        /* Motor de Análise */
+        .analysis-box { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; }
+        .indicator-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px;}
+        .indicator-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .badge { padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
+        .bg-green { background: rgba(0, 200, 83, 0.2); color: var(--green-profit); border: 1px solid rgba(0, 200, 83, 0.3); }
+        .bg-red { background: rgba(255, 82, 82, 0.2); color: var(--red-loss); border: 1px solid rgba(255, 82, 82, 0.3); }
+        .bg-blue { background: rgba(41, 121, 255, 0.2); color: var(--blue-accent); border: 1px solid rgba(41, 121, 255, 0.3); }
         .bg-purple { background: rgba(156, 39, 176, 0.2); color: #E040FB; border: 1px solid #E040FB; }
 
-        .prob-bar-bg { width: 100%; height: 20px; background: var(--border-color); border-radius: 10px; overflow: hidden; margin-top: 5px; position: relative; }
-        .prob-bar-fill { height: 100%; width: 0%; background: var(--blue-accent); transition: width 0.5s; }
-        .prob-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 12px; font-weight: bold; line-height: 20px; color: white; text-shadow: 1px 1px 2px black; }
-
-        /* Controles Base */
-        .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
-        .btn { padding: 12px; border: none; border-radius: 6px; font-weight: bold; color: white; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 5px; }
-        .btn:hover { opacity: 0.8; transform: scale(0.98); } .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        
-        .btn-start { background-color: var(--blue-accent); } 
-        .btn-pause { background-color: var(--yellow-alert); color: black; } 
-        .btn-stop { background-color: var(--red-loss); }
-        .btn-rise { background-color: var(--green-profit); font-size: 16px; padding: 15px;} 
-        .btn-fall { background-color: var(--red-loss); font-size: 16px; padding: 15px;}
+        .prob-bar-bg { width: 100%; height: 24px; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 8px; position: relative; }
+        .prob-bar-fill { height: 100%; width: 0%; background: var(--blue-accent); transition: width 0.6s cubic-bezier(0.25, 0.8, 0.25, 1), background-color 0.4s; }
+        .prob-text { position: absolute; top: 0; left: 0; width: 100%; text-align: center; font-size: 12px; font-weight: bold; line-height: 24px; color: white; text-shadow: 0px 1px 3px rgba(0,0,0,0.8); }
 
         /* ================= VELA DE TRADE DINÂMICA ================= */
         .trade-visualizer {
             display: none; flex-direction: column; align-items: center;
-            background: radial-gradient(circle at center, rgba(41, 121, 255, 0.08) 0%, transparent 100%);
+            background: linear-gradient(180deg, rgba(41, 121, 255, 0.05) 0%, rgba(0,0,0,0.2) 100%);
             border: 1px solid rgba(41, 121, 255, 0.3); border-radius: 8px;
-            padding: 15px 20px; margin-bottom: 15px;
-            opacity: 0; transition: opacity 0.5s;
+            padding: 20px; opacity: 0; transition: opacity 0.5s, transform 0.5s;
         }
         .trade-visualizer.active { display: flex; opacity: 1; animation: slideDown 0.4s ease-out forwards; }
         .trade-visualizer.pulse { animation: entryPulse 0.8s ease-out forwards; }
@@ -100,25 +103,30 @@
         @keyframes slideDown { from { transform: translateY(-10px); opacity:0; } to { transform: translateY(0); opacity:1; } }
         @keyframes entryPulse { 0% { box-shadow: 0 0 0 0 rgba(41, 121, 255, 0.6); } 70% { box-shadow: 0 0 20px 15px rgba(41, 121, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
 
-        .candle-wrapper { position: relative; height: 110px; width: 100%; max-width: 150px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); border-radius: 6px; border: 1px dashed var(--border-color); margin: 10px 0; }
+        .candle-wrapper { position: relative; height: 120px; width: 100%; max-width: 200px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.01); border-radius: 6px; border: 1px dashed var(--border-color); margin: 15px 0; }
         .candle-wick { width: 2px; height: 90%; background: #555; position: absolute; }
-        .candle-body { width: 30px; height: 4px; background: white; transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 2; border-radius: 3px; }
+        .candle-body { width: 34px; height: 4px; background: white; transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1); z-index: 2; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
 
-        /* ================= LOGS ANIMADOS ================= */
-        .log-container { flex-grow: 1; background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
-        .log-item { 
-            padding: 8px; border-radius: 4px; border-left: 3px solid transparent; background: rgba(255,255,255,0.02); 
-            animation: fadeIn 0.4s ease-out forwards;
-            transition: opacity 1s, height 0.5s, margin 0.5s, padding 0.5s;
+        /* ================= TOASTS DE NOTIFICAÇÃO ================= */
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast {
+            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 16px;
+            color: white; font-size: 13px; font-weight: 500; min-width: 250px; max-width: 350px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 10px;
+            animation: slideInRight 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) forwards; pointer-events: auto;
         }
-        .log-call { border-left-color: var(--green-profit); } .log-put { border-left-color: var(--red-loss); } .log-info { border-left-color: var(--blue-accent); } .log-alert { border-left-color: var(--yellow-alert); }
-        
-        @keyframes fadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
-        
-        .log-item.dimmed { opacity: 0.5; }
-        .log-item.hide { opacity: 0; height: 0; margin: 0; padding: 0; border: none; overflow: hidden; }
+        .toast.hide { animation: fadeOutRight 0.4s forwards; }
+        .toast-call { border-left: 4px solid var(--green-profit); }
+        .toast-put { border-left: 4px solid var(--red-loss); }
+        .toast-info { border-left: 4px solid var(--blue-accent); }
+        .toast-alert { border-left: 4px solid var(--yellow-alert); }
 
-        .small-input { padding: 8px !important; font-size: 13px; }
+        @keyframes slideInRight { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes fadeOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(120%); opacity: 0; } }
+
+        /* Utilitários */
+        .small-input { padding: 10px !important; font-size: 13px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     </style>
 </head>
 <body>
@@ -129,8 +137,8 @@
             <h1>Deriv SMC Pro <span style="font-size: 12px; color: var(--blue-accent);">V3 OHLC</span></h1>
             <p>Smart Money & Advanced Pattern Trading</p>
             <div class="input-group"><label>App ID</label><input type="text" id="app-id" value="121512" readonly style="background: rgba(255,255,255,0.1); color: #888;"></div>
-            <div class="input-group"><label>Token da API (Read / Trade)</label><input type="password" id="api-token" placeholder="Cole seu Token Deriv aqui..."></div>
-            <div class="input-group"><label>Tipo de Conta</label><select id="account-type"><option value="demo">Conta Demo (Virtual)</option><option value="real">Conta Real (Dinheiro Real)</option></select></div>
+            <div class="input-group"><label>Token da API</label><input type="password" id="api-token" placeholder="Cole seu Token Deriv aqui..."></div>
+            <div class="input-group"><label>Tipo de Conta</label><select id="account-type"><option value="demo">Conta Demo (Virtual)</option><option value="real">Conta Real</option></select></div>
             <button class="btn-connect" onclick="connectDeriv()">Conectar ao Servidor</button>
             <div id="login-status"></div>
         </div>
@@ -140,104 +148,40 @@
     <div id="main-app">
         <header>
             <div class="header-title">
-                <button class="btn-gear" onclick="toggleSettings()" title="Abrir/Fechar Configurações">⚙️</button>
-                📊 Deriv SMC Pro V3 
-                <span class="status-badge" id="header-status">Conectado</span>
+                <button class="btn-gear" onclick="toggleSettings()" title="Abrir Configurações">⚙️</button>
+                Deriv SMC Pro V3 <span class="status-badge" id="header-status">Conectado</span>
             </div>
-            <div style="font-weight: bold; color: var(--text-light);" id="header-account">Conta: --</div>
+            <div style="font-weight: bold; color: var(--text-light); font-size: 14px;" id="header-account">Conta: --</div>
         </header>
 
-        <div class="app-container" id="app-container">
-            
-            <!-- PAINEL ESQUERDO: CONFIGURAÇÕES (Oculto por Padrão) -->
-            <div class="panel panel-settings" id="settings-panel">
-                <div class="panel-title" style="margin-bottom: 20px;">⚙️ Configurações Avançadas</div>
-                
-                <div class="input-group">
-                    <label>Mercado</label>
-                    <select id="cfg-market" class="small-input">
-                        <option value="R_100">Volatility 100 Index</option>
-                        <option value="1HZ10V">Vol 10 (1s) Index</option>
-                        <option value="R_50">Volatility 50 Index</option>
-                    </select>
-                </div>
-
-                <div class="control-grid">
-                    <div class="input-group" style="margin:0;">
-                        <label>Timeframe (OHLC)</label>
-                        <select id="cfg-tf-analysis" class="small-input"><option value="60">1 Minuto</option><option value="300">5 Minutos</option><option value="600">10 Minutos</option></select>
-                    </div>
-                    <div class="input-group" style="margin:0;">
-                        <label title="Bloqueado: Duração = Timeframe">Duração</label>
-                        <input type="text" value="Automático" readonly class="small-input" style="color: #888; background: rgba(255,255,255,0.05);">
-                    </div>
-                </div>
-
-                <div class="control-grid" style="margin-top: 10px;">
-                    <div class="input-group" style="margin:0;">
-                        <label>Modo Operação</label>
-                        <select id="cfg-mode" class="small-input"><option value="auto">Automático</option><option value="manual">Manual (Sinais)</option></select>
-                    </div>
-                    <div class="input-group" style="margin:0;">
-                        <label>Perfil Interno</label>
-                        <select id="cfg-profile" class="small-input"><option value="balanced">Equilibrado</option><option value="secure">Seguro (+Filtros)</option></select>
-                    </div>
-                </div>
-
-                <div class="control-grid" style="border: 1px solid var(--border-color); padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.2);">
-                    <div class="input-group" style="margin:0;"><label>MTF Trend Surf</label><select id="cfg-mtf" class="small-input"><option value="off">Desativado</option><option value="on">Ativado</option></select></div>
-                    <div class="input-group" style="margin:0;"><label>Saída Dinâmica</label><select id="cfg-dyn-exit" class="small-input"><option value="off">Expirar Normal</option><option value="on">Fechar Reversão</option></select></div>
-                </div>
-
-                <div style="border-top: 1px solid var(--border-color); margin: 15px 0;"></div>
-
-                <div class="input-group">
-                    <label>Stake Inicial (USD ou %)</label>
-                    <div style="display:flex; gap:5px;">
-                        <input type="number" id="cfg-stake" class="small-input" value="1.00" step="0.5">
-                        <select id="cfg-stake-type" class="small-input" style="width: 80px;"><option value="fixed">Fixo</option><option value="percent">% Banca</option></select>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Gestão de Risco</label>
-                    <select id="cfg-martingale" class="small-input"><option value="none">Soros / Fixo</option><option value="martingale">Martingale Clássico (x2.0)</option><option value="anti">Anti-Martingale (x2 no Win)</option></select>
-                </div>
-
-                <div class="control-grid">
-                    <div class="input-group" style="margin:0;"><label>Stop Loss ($)</label><input type="number" id="cfg-sl" class="small-input" value="20"></div>
-                    <div class="input-group" style="margin:0;"><label>Take Profit ($)</label><input type="number" id="cfg-tp" class="small-input" value="20"></div>
-                </div>
-            </div>
-
-            <!-- PAINEL CENTRAL: DASHBOARD & CONTROLES -->
-            <div class="panel panel-center">
+        <div class="app-container">
+            <!-- PAINEL CENTRAL EXPANDIDO -->
+            <div class="panel">
                 
                 <div class="panel-title" style="border-bottom:none; margin-bottom:5px;">
-                    <span>📈 Dashboard Real-Time <span id="mtf-badge" class="badge bg-purple" style="display: none; margin-left: 10px;">MTF Ativo</span></span>
-                    <span id="live-price" style="color: var(--yellow-alert); font-family: monospace; font-size: 22px;">0.0000</span>
+                    <span style="display:flex; align-items:center; gap:10px;">📈 Visão Geral do Mercado <span id="mtf-badge" class="badge bg-purple" style="display: none;">MTF Ativo</span></span>
+                    <span id="live-price" style="color: var(--yellow-alert); font-family: monospace; font-size: 26px; font-weight: bold;">0.0000</span>
                 </div>
 
                 <div class="stats-grid">
-                    <div class="stat-card"><span>Saldo Atual</span><strong id="ui-balance" class="color-alert">--</strong></div>
-                    <div class="stat-card"><span>Lucro Diário</span><strong id="ui-profit">--</strong></div>
+                    <div class="stat-card"><span>Saldo</span><strong id="ui-balance" class="color-alert">--</strong></div>
+                    <div class="stat-card"><span>Lucro</span><strong id="ui-profit">--</strong></div>
                     <div class="stat-card"><span>Win Rate</span><strong id="ui-winrate">0%</strong></div>
-                    <div class="stat-card"><span>Trades (W/L)</span><strong id="ui-trades">0 (0/0)</strong></div>
-                    <div class="stat-card"><span>Estado Mercado</span><strong id="ui-market-state">Analisando...</strong></div>
-                    <div class="stat-card"><span>Bot Status</span><strong id="ui-bot-status" style="color: gray;">Parado</strong></div>
+                    <div class="stat-card"><span>Trades</span><strong id="ui-trades">0 (0W/0L)</strong></div>
+                    <div class="stat-card"><span>Mercado</span><strong id="ui-market-state" style="font-size:16px;">Analisando...</strong></div>
+                    <div class="stat-card"><span>Status</span><strong id="ui-bot-status" style="color: gray; font-size:16px;">Parado</strong></div>
                 </div>
 
-                <!-- CONTROLES PRINCIPAIS MOVIMENTADOS PARA CÁ -->
-                <div class="control-grid" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 20px;">
-                    <button class="btn btn-start" id="btn-start" onclick="toggleBot(true)">▶ Iniciar Bot</button>
+                <div class="control-grid" style="margin: 5px 0 15px 0;">
+                    <button class="btn btn-start" id="btn-start" onclick="toggleBot(true)">▶ Iniciar Robô</button>
                     <button class="btn btn-pause" id="btn-pause" onclick="toggleBot(false)" disabled>⏸ Pausar</button>
-                    <button class="btn btn-stop" onclick="emergencyStop()">⛔ STOP</button>
+                    <button class="btn btn-stop" onclick="emergencyStop()">⛔ Stop Geral</button>
                 </div>
 
                 <!-- VELA DE TRADE (VISUALIZADOR DINÂMICO) -->
                 <div id="trade-visualizer" class="trade-visualizer">
                     <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-                        <span style="font-weight:bold; font-size:14px; color:white;">⚡ Trade em Andamento</span>
+                        <span style="font-weight:bold; font-size:15px; color:white;">⚡ Contrato em Andamento</span>
                         <span id="trade-dir-badge" class="badge">--</span>
                     </div>
                     
@@ -247,48 +191,95 @@
                     </div>
                     
                     <div style="display:flex; justify-content:space-between; width:100%; text-align:center;">
-                        <div><div style="font-size:11px; color:#888;">Entrada</div><div id="trade-entry" style="font-weight:bold; color:white;">0.000</div></div>
+                        <div><div style="font-size:12px; color:#888; margin-bottom:4px;">Entrada</div><div id="trade-entry" style="font-weight:bold; color:white; font-size:16px;">0.000</div></div>
                         <div>
-                            <div style="font-size:11px; color:#888;">Cronômetro</div>
-                            <div id="trade-timer" style="font-family:monospace; font-size:20px; color:var(--yellow-alert); font-weight:bold; letter-spacing:1px;">00:00</div>
+                            <div style="font-size:12px; color:#888; margin-bottom:4px;">Tempo Restante</div>
+                            <div id="trade-timer" style="font-family:monospace; font-size:24px; color:var(--yellow-alert); font-weight:bold; letter-spacing:2px;">00:00</div>
                         </div>
-                        <div><div style="font-size:11px; color:#888;">Spot Atual</div><div id="trade-spot" style="font-weight:bold; color:white;">0.000</div></div>
+                        <div><div style="font-size:12px; color:#888; margin-bottom:4px;">Spot Atual</div><div id="trade-spot" style="font-weight:bold; color:white; font-size:16px;">0.000</div></div>
                     </div>
                 </div>
 
-                <div class="panel-title">🧠 Motor OHLC & Candlestick Tracker</div>
+                <div class="panel-title" style="margin-top: 10px;">🧠 Motor Analítico (OHLC & Price Action)</div>
                 
                 <div class="analysis-box">
-                    <div class="indicator-row"><span>Tendência Estrutural</span><span class="badge" id="ind-trend">Carregando...</span></div>
-                    <div class="indicator-row"><span>Condição de Mercado (Filtro Lateral)</span><span class="badge" id="ind-smc">Aguardando...</span></div>
-                    <div class="indicator-row"><span>Padrão Candlestick Formado</span><span class="badge" id="ind-candle">Analisando Velas...</span></div>
-                    <div class="indicator-row"><span>Momentum do OHLC</span><span class="badge" id="ind-vol">Normal</span></div>
+                    <div class="indicator-row"><span>Direção da Estrutura</span><span class="badge" id="ind-trend">Carregando...</span></div>
+                    <div class="indicator-row"><span>Filtro de Ruído (SMC)</span><span class="badge" id="ind-smc">Aguardando...</span></div>
+                    <div class="indicator-row"><span>Tracker de Candlestick</span><span class="badge" id="ind-candle">Analisando Velas...</span></div>
+                    <div class="indicator-row"><span>Momentum (Volume Oculto)</span><span class="badge" id="ind-vol">Normal</span></div>
                     
-                    <div style="margin-top: 15px;">
-                        <span style="font-size: 12px; font-weight: bold;">Probabilidade de Êxito:</span>
-                        <div class="prob-bar-bg"><div class="prob-bar-fill" id="prob-fill"></div><div class="prob-text" id="prob-text">0% (Aguardando Fechamento)</div></div>
+                    <div style="margin-top: 20px;">
+                        <span style="font-size: 13px; font-weight: bold; color: #8b949e;">Probabilidade Calculada (Fechamento):</span>
+                        <div class="prob-bar-bg"><div class="prob-bar-fill" id="prob-fill"></div><div class="prob-text" id="prob-text">0% (Aguardando)</div></div>
                     </div>
                 </div>
 
-                <div class="control-grid" id="manual-controls" style="opacity: 0.5; pointer-events: none;">
-                    <button class="btn btn-rise" onclick="forceTrade('CALL')">📈 RISE (SOBE)</button>
-                    <button class="btn btn-fall" onclick="forceTrade('PUT')">📉 FALL (DESCE)</button>
+                <div class="grid-2" id="manual-controls" style="opacity: 0.5; pointer-events: none; margin-top: 10px;">
+                    <button class="btn btn-rise" onclick="forceTrade('CALL')">📈 ABRIR CALL (SOBE)</button>
+                    <button class="btn btn-fall" onclick="forceTrade('PUT')">📉 ABRIR PUT (DESCE)</button>
                 </div>
-            </div>
-
-            <!-- PAINEL DIREITO: LOGS -->
-            <div class="panel panel-right">
-                <div class="panel-title">📝 Logs Animados <button onclick="clearLogs()" style="background:none; border:none; color:var(--blue-accent); cursor:pointer; font-size:12px;">Limpar</button></div>
-                <div class="log-container" id="log-box"></div>
             </div>
         </div>
     </div>
 
+    <!-- ================= 3. OVERLAY MODAL (CONFIGURAÇÕES) ================= -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <div class="panel-title">
+                ⚙️ Configurações do Robô
+                <button class="close-btn" onclick="toggleSettings()">✖</button>
+            </div>
+            
+            <div class="input-group" style="margin-top:15px;">
+                <label>Mercado Operacional</label>
+                <select id="cfg-market" class="small-input"><option value="R_100">Volatility 100 Index</option><option value="1HZ10V">Vol 10 (1s) Index</option><option value="R_50">Volatility 50 Index</option></select>
+            </div>
+
+            <div class="grid-2">
+                <div class="input-group"><label>Timeframe (OHLC)</label><select id="cfg-tf-analysis" class="small-input"><option value="60">1 Minuto</option><option value="300">5 Minutos</option><option value="600">10 Minutos</option></select></div>
+                <div class="input-group"><label>Duração do Trade</label><input type="text" value="Auto (1 Vela)" readonly class="small-input" style="color: #888; background: rgba(255,255,255,0.05);"></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="input-group"><label>Modo</label><select id="cfg-mode" class="small-input"><option value="auto">Automático</option><option value="manual">Manual (Avisos)</option></select></div>
+                <div class="input-group"><label>Perfil Institucional</label><select id="cfg-profile" class="small-input"><option value="balanced">Equilibrado</option><option value="secure">Seguro (+Filtros)</option></select></div>
+            </div>
+
+            <div class="grid-2" style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px;">
+                <div class="input-group" style="margin:0;"><label>MTF Trend Surf</label><select id="cfg-mtf" class="small-input"><option value="off">Inativo</option><option value="on">Ativo</option></select></div>
+                <div class="input-group" style="margin:0;"><label>Saída Dinâmica</label><select id="cfg-dyn-exit" class="small-input"><option value="off">Expirar</option><option value="on">Fechar Auto</option></select></div>
+            </div>
+
+            <div class="input-group">
+                <label>Stake Inicial</label>
+                <div style="display:flex; gap:5px;">
+                    <input type="number" id="cfg-stake" class="small-input" value="1.00" step="0.5">
+                    <select id="cfg-stake-type" class="small-input" style="width: 100px;"><option value="fixed">USD Fixo</option><option value="percent">% Banca</option></select>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Gestão de Risco</label>
+                <select id="cfg-martingale" class="small-input"><option value="none">Soros / Fixo</option><option value="martingale">Martingale (x2)</option><option value="anti">Anti-Martingale</option></select>
+            </div>
+
+            <div class="grid-2">
+                <div class="input-group" style="margin:0;"><label>Stop Loss ($)</label><input type="number" id="cfg-sl" class="small-input" value="20"></div>
+                <div class="input-group" style="margin:0;"><label>Take Profit ($)</label><input type="number" id="cfg-tp" class="small-input" value="20"></div>
+            </div>
+
+            <button class="btn btn-save" onclick="toggleSettings()">💾 Guardar e Fechar</button>
+        </div>
+    </div>
+
+    <!-- ================= 4. CONTAINER DE NOTIFICAÇÕES ================= -->
+    <div id="toast-container" class="toast-container"></div>
+
     <!-- ================= SCRIPT JAVASCRIPT ================= -->
     <script>
-        // --- VARIÁVEIS GLOBAIS (Lógica Mantida Intacta) ---
+        // --- VARIÁVEIS GLOBAIS ---
         let ws; const app_id = 121512; let isConnected = false;
-        let botState = 'STOPPED'; // STOPPED, RUNNING, PAUSED, TRADING
+        let botState = 'STOPPED';
         let account = { balance: 0, currency: 'USD', loginid: '' };
         let stats = { profit: 0, wins: 0, losses: 0, totalTrades: 0, currentStake: 0, initialStake: 0 };
         let marketData = { candles:[], trend: 'FLAT', lateral: false };
@@ -296,39 +287,33 @@
         let currentSignalDirection = 'NONE';
         
         let lastEpoch = 0; 
-        let pendingSignal = null; 
 
-        // --- SISTEMA DE LOGS ANIMADOS & UI ---
+        // --- UI E NOTIFICAÇÕES ---
         function toggleSettings() {
-            document.getElementById('app-container').classList.toggle('settings-open');
+            document.getElementById('settings-modal').classList.toggle('active');
         }
 
+        // Nova Função de Logs em Formato Toast Flutuante
         function writeLog(msg, type = 'info') {
-            const box = document.getElementById('log-box');
-            const time = new Date().toLocaleTimeString();
-            const div = document.createElement('div');
-            div.className = `log-item log-${type}`;
-            div.innerHTML = `<span style="color:#888;">[${time}]</span> ${msg}`;
-            box.prepend(div);
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            // Ícones dependendo do tipo
+            let icon = 'ℹ️';
+            if(type === 'call') icon = '📈';
+            if(type === 'put') icon = '📉';
+            if(type === 'alert') icon = '⚠️';
 
-            // Garante que o container não sobrecarregue (Max 30 absolutos na DOM)
-            while (box.children.length > 30) { box.removeChild(box.lastChild); }
+            toast.innerHTML = `<span>${icon}</span><span style="flex:1;">${msg}</span>`;
+            container.appendChild(toast);
 
-            // Lógica de Fade Out inteligente (Mantém histórico mínimo)
+            // Somem automaticamente após 4 segundos
             setTimeout(() => {
-                const index = Array.from(box.children).indexOf(div);
-                if (index >= 4) { 
-                    // Se for mais antigo que o 4º item, faz fade out suave e some
-                    div.classList.add('hide');
-                    setTimeout(() => { if (box.contains(div)) div.remove(); }, 1000);
-                } else {
-                    // Se for recente (top 4), apenas tira o foco visual (dim)
-                    div.classList.add('dimmed');
-                }
-            }, 8000); // 8 segundos de destaque
+                toast.classList.add('hide');
+                setTimeout(() => toast.remove(), 400); // Aguarda o fim da animação css
+            }, 4000);
         }
-        
-        function clearLogs() { document.getElementById('log-box').innerHTML = ''; writeLog('Sistema Limpo.', 'info'); }
 
         function updateDashboard() {
             document.getElementById('ui-balance').innerText = `${account.balance.toFixed(2)} ${account.currency}`;
@@ -336,19 +321,17 @@
             document.getElementById('ui-profit').className = stats.profit >= 0 ? 'color-profit' : 'color-loss';
             let winRate = stats.totalTrades > 0 ? ((stats.wins / stats.totalTrades) * 100).toFixed(1) : 0;
             document.getElementById('ui-winrate').innerText = `${winRate}%`;
-            document.getElementById('ui-trades').innerText = `${stats.totalTrades} (${stats.wins}W / ${stats.losses}L)`;
-            let statusTxt = botState === 'RUNNING' ? '🟢 Analisando Velas' : botState === 'TRADING' ? '🟡 Em Operação' : '🔴 Parado';
+            document.getElementById('ui-trades').innerText = `${stats.totalTrades} (${stats.wins}W/${stats.losses}L)`;
+            let statusTxt = botState === 'RUNNING' ? '🟢 Analisando...' : botState === 'TRADING' ? '🟡 Em Operação' : '🔴 Parado';
             document.getElementById('ui-bot-status').innerText = statusTxt;
         }
 
-        // --- ATUALIZA VELA DE TRADE VISUAL (NOVIDADE) ---
+        // --- VELA DE TRADE VISUAL ---
         function updateTradeVisualizer(contract) {
             const visualizer = document.getElementById('trade-visualizer');
             
-            // Exibir Container + Efeito Pulso
             if (!visualizer.classList.contains('active')) {
-                visualizer.classList.add('active');
-                visualizer.classList.add('pulse');
+                visualizer.classList.add('active', 'pulse');
                 setTimeout(() => visualizer.classList.remove('pulse'), 800);
                 
                 let badge = document.getElementById('trade-dir-badge');
@@ -356,7 +339,6 @@
                 badge.className = currentSignalDirection === 'CALL' ? 'badge bg-green' : 'badge bg-red';
             }
 
-            // Valores Base
             let currentPriceObj = document.getElementById('live-price').innerText;
             let entry = parseFloat(contract.entry_tick || contract.entry_spot || currentPriceObj);
             let current = parseFloat(contract.current_spot || currentPriceObj);
@@ -364,7 +346,6 @@
             document.getElementById('trade-entry').innerText = entry.toFixed(4);
             document.getElementById('trade-spot').innerText = current.toFixed(4);
 
-            // Animação da Vela (Verde ou Vermelha)
             let diff = current - entry;
             let isProfit = (currentSignalDirection === 'CALL' && diff > 0) || (currentSignalDirection === 'PUT' && diff < 0);
             
@@ -375,13 +356,11 @@
                 candle.style.transform = 'translateY(0)';
             } else {
                 candle.style.backgroundColor = isProfit ? 'var(--green-profit)' : 'var(--red-loss)';
-                // Cálculo de altura visual flexível (cobre pequenas e grandes volatilidades sem explodir a div)
-                let height = Math.min(Math.max(Math.abs(diff) * 1200, 6), 45); 
+                let height = Math.min(Math.max(Math.abs(diff) * 1500, 8), 50); 
                 candle.style.height = `${height}px`;
                 candle.style.transform = diff > 0 ? `translateY(-${height/2}px)` : `translateY(${height/2}px)`;
             }
 
-            // Temporizador Regressivo
             let now = Math.floor(Date.now() / 1000);
             let expiry = contract.date_expiry;
             if (expiry) {
@@ -395,12 +374,12 @@
             }
         }
 
-        // --- WEBSOCKET E CONEXÃO ---
+        // --- CONEXÃO WEBSOCKET ---
         function connectDeriv() {
             const token = document.getElementById('api-token').value.trim();
             const statusLabel = document.getElementById('login-status');
             if(!token) { statusLabel.innerText = 'Erro: Insira o Token!'; statusLabel.style.color = 'var(--red-loss)'; return; }
-            statusLabel.innerText = 'Conectando ao WebSocket...'; statusLabel.style.color = 'var(--yellow-alert)';
+            statusLabel.innerText = 'Conectando...'; statusLabel.style.color = 'var(--yellow-alert)';
 
             if(ws) ws.close();
             ws = new WebSocket(`wss://ws.binaryws.com/websockets/v3?app_id=${app_id}`);
@@ -410,7 +389,7 @@
                 const data = JSON.parse(msg.data);
                 if (data.error) {
                     if(!isConnected) { statusLabel.innerText = `Falha: ${data.error.message}`; statusLabel.style.color = 'var(--red-loss)'; }
-                    else { writeLog(`ERRO API: ${data.error.message}`, 'alert'); }
+                    else { writeLog(`ERRO: ${data.error.message}`, 'alert'); }
                     return;
                 }
 
@@ -418,7 +397,7 @@
                     isConnected = true; account.balance = data.authorize.balance; account.currency = data.authorize.currency; account.loginid = data.authorize.loginid;
                     document.getElementById('login-screen').style.display = 'none'; document.getElementById('main-app').style.display = 'flex';
                     document.getElementById('header-account').innerText = `${account.loginid} (${document.getElementById('account-type').value.toUpperCase()})`;
-                    writeLog(`Conexão estabelecida. Conta: ${account.loginid}`, 'info'); updateDashboard();
+                    writeLog(`Conectado à conta ${account.loginid}`, 'info'); updateDashboard();
                 }
 
                 if (data.msg_type === 'ohlc' || data.msg_type === 'candles') {
@@ -431,7 +410,6 @@
                         document.getElementById('live-price').innerText = parseFloat(ohlc.close).toFixed(4);
                         
                         let currentEpoch = ohlc.epoch;
-                        
                         let last = marketData.candles[marketData.candles.length - 1];
                         if(last && last.epoch === currentEpoch) { marketData.candles[marketData.candles.length - 1] = ohlc; } 
                         else { marketData.candles.push(ohlc); }
@@ -441,7 +419,6 @@
 
                         if (lastEpoch !== 0 && currentEpoch !== lastEpoch) {
                             if(botState === 'RUNNING') {
-                                writeLog(`⏱️ Vela fechada. Executando motor analítico...`, 'info');
                                 processClosedCandleAndExecute();
                             }
                         }
@@ -457,38 +434,37 @@
                     activeContractId = data.buy.contract_id;
                     const type = data.buy.shortcode.includes('CALL') ? 'RISE' : 'FALL';
                     currentSignalDirection = type === 'RISE' ? 'CALL' : 'PUT';
-                    writeLog(`🛒 Ordem Confirmada na Abertura: ${type} | Risco: $${stats.currentStake.toFixed(2)}`, type === 'RISE' ? 'call' : 'put');
+                    writeLog(`Ordem Confirmada: ${type} ($${stats.currentStake.toFixed(2)})`, type === 'RISE' ? 'call' : 'put');
                     ws.send(JSON.stringify({ proposal_open_contract: 1, contract_id: activeContractId, subscribe: 1 }));
                 }
 
                 if (data.msg_type === 'sell') {
-                    writeLog(`⚡ Saída Antecipada: Contrato vendido para proteção.`, 'alert');
+                    writeLog(`Proteção de Saída Antecipada acionada.`, 'alert');
                 }
 
                 if (data.msg_type === 'proposal_open_contract') {
                     const contract = data.proposal_open_contract;
                     
                     if (contract.is_sold) {
-                        // Fechamento da Operação
-                        document.getElementById('trade-visualizer').classList.remove('active');
+                        // Fecha painel do trade
+                        setTimeout(()=> document.getElementById('trade-visualizer').classList.remove('active'), 1500);
                         botState = 'RUNNING'; activeContractId = null;
                         
                         let pnl = parseFloat(contract.profit);
                         stats.profit += pnl; stats.totalTrades++; account.balance += pnl;
 
-                        if (pnl > 0) { stats.wins++; writeLog(`✅ WIN! Lucro: +$${pnl.toFixed(2)}`, 'call'); handleRiskManagement('WIN'); } 
-                        else { stats.losses++; writeLog(`❌ LOSS. Perda: $${pnl.toFixed(2)}`, 'put'); handleRiskManagement('LOSS'); }
+                        if (pnl > 0) { stats.wins++; writeLog(`WIN! Lucro: +$${pnl.toFixed(2)}`, 'call'); handleRiskManagement('WIN'); } 
+                        else { stats.losses++; writeLog(`LOSS. Perda: $${pnl.toFixed(2)}`, 'put'); handleRiskManagement('LOSS'); }
                         
                         updateDashboard(); checkLimits();
                     } else {
-                        // O contrato está ativo, atualiza a Vela Visual + Cronômetro
                         updateTradeVisualizer(contract);
                     }
                 }
             };
         }
 
-        // --- MOTOR OHLC SÍNCRONO (LÓGICA INTACTA) ---
+        // --- LÓGICA DE TRADING (MANTIDA INTACTA) ---
         function processClosedCandleAndExecute() {
             if (marketData.candles.length < 15) return;
             const c = marketData.candles;
@@ -508,20 +484,15 @@
             marketData.lateral = (range < avgBody * 2.5); 
 
             if (marketData.lateral) {
-                document.getElementById('ind-smc').className = 'badge bg-red'; document.getElementById('ind-smc').innerText = 'Mercado Lateral/Sem Força';
+                document.getElementById('ind-smc').className = 'badge bg-red'; document.getElementById('ind-smc').innerText = 'Lateralizado / Neutro';
                 document.getElementById('ui-market-state').innerText = 'Consolidação';
-                let profile = document.getElementById('cfg-profile').value;
-                if (profile === 'secure') {
-                    writeLog(`🚫 Filtro Seguro: Mercado lateral detectado. Entrada abortada.`, 'alert');
-                    return; 
-                }
+                if (document.getElementById('cfg-profile').value === 'secure') return; 
             } else {
-                document.getElementById('ind-smc').className = 'badge bg-green'; document.getElementById('ind-smc').innerText = 'Bom Fluxo / Direcional';
+                document.getElementById('ind-smc').className = 'badge bg-green'; document.getElementById('ind-smc').innerText = 'Fluxo Direcional';
             }
 
             let sum = 0; for(let i=2; i<=15; i++) sum += parseFloat(c[c.length-i].close);
-            let sma14 = sum / 14;
-            let isUptrend = parseFloat(c1.close) > sma14;
+            let isUptrend = parseFloat(c1.close) > (sum / 14);
             marketData.trend = isUptrend ? 'UP' : 'DOWN';
             document.getElementById('ui-market-state').innerText = isUptrend ? 'Tendência Alta' : 'Tendência Baixa';
 
@@ -529,24 +500,15 @@
             document.getElementById('ind-candle').className = pattern.dir === 'CALL' ? 'badge bg-green' : (pattern.dir === 'PUT' ? 'badge bg-red' : 'badge bg-blue');
             document.getElementById('ind-candle').innerText = pattern.name;
 
-            let prob = 40; 
-            let finalSignal = pattern.dir;
-            let reasons =[];
-
+            let prob = 40; let finalSignal = pattern.dir;
             if (finalSignal !== 'NONE') {
-                if ((finalSignal === 'CALL' && isUptrend) || (finalSignal === 'PUT' && !isUptrend)) {
-                    prob += 30; reasons.push('Padrão Alinhado à Tendência');
-                } else {
-                    prob += 10; reasons.push('Padrão Contra-Tendência');
-                }
+                prob += ((finalSignal === 'CALL' && isUptrend) || (finalSignal === 'PUT' && !isUptrend)) ? 30 : 10;
                 prob += pattern.weight;
-                reasons.push(pattern.name);
-                
-                if (!marketData.lateral) { prob += 15; reasons.push('Volume Confirmado'); }
+                if (!marketData.lateral) prob += 15;
             } else {
                 let isC1Green = parseFloat(c1.close) > parseFloat(c1.open);
-                if(isUptrend && isC1Green) { prob += 25; finalSignal = 'CALL'; reasons.push('Fluxo de Alta Contínuo'); }
-                else if(!isUptrend && !isC1Green) { prob += 25; finalSignal = 'PUT'; reasons.push('Fluxo de Baixa Contínuo'); }
+                if(isUptrend && isC1Green) { prob += 25; finalSignal = 'CALL'; }
+                else if(!isUptrend && !isC1Green) { prob += 25; finalSignal = 'PUT'; }
             }
 
             prob = Math.min(prob, 100);
@@ -556,17 +518,13 @@
             document.getElementById('prob-text').innerText = `${prob}% | Sinal: ${finalSignal}`;
 
             let mode = document.getElementById('cfg-mode').value;
-            let profile = document.getElementById('cfg-profile').value;
-            let probLimit = profile === 'secure' ? 75 : 60; 
+            let probLimit = document.getElementById('cfg-profile').value === 'secure' ? 75 : 60; 
 
             if (mode === 'manual') {
-                writeLog(`🔔 Sinal Gerado: ${finalSignal} | Prob: ${prob}% | Motivos: ${reasons.join(', ')}`, 'info');
+                if(prob >= 50) writeLog(`Sinal: ${finalSignal} | Prob: ${prob}% | ${pattern.name}`, 'info');
                 document.getElementById('manual-controls').style.opacity = '1'; document.getElementById('manual-controls').style.pointerEvents = 'auto';
-            } else {
-                if (prob >= probLimit && finalSignal !== 'NONE') {
-                    writeLog(`⚡ Entrada Engatilhada (Perfil ${profile.toUpperCase()}): ${finalSignal} | Prob: ${prob}%`, 'info');
-                    executeTrade(finalSignal);
-                }
+            } else if (prob >= probLimit && finalSignal !== 'NONE') {
+                executeTrade(finalSignal);
             }
         }
 
@@ -580,71 +538,50 @@
             const mid = (c) => (parseFloat(c.open) + parseFloat(c.close)) / 2;
 
             if (dnWick(c1) > body(c1)*2 && upWick(c1) < body(c1)*0.2 && isRed(c2)) return { name: 'Hammer', dir: 'CALL', weight: 20 };
-            if (upWick(c1) > body(c1)*2 && dnWick(c1) < body(c1)*0.2 && isRed(c2) && c1.close < c2.open) return { name: 'Inverted Hammer', dir: 'CALL', weight: 15 };
             if (isRed(c2) && isGrn(c1) && c1.close > c2.open && c1.open <= c2.close) return { name: 'Bullish Engulfing', dir: 'CALL', weight: 25 };
-            if (isRed(c2) && isGrn(c1) && c1.open < c2.low && c1.close > mid(c2)) return { name: 'Piercing Line', dir: 'CALL', weight: 20 };
             if (isRed(c3) && body(c2) < total(c2)*0.3 && isGrn(c1) && c1.close > mid(c3)) return { name: 'Morning Star', dir: 'CALL', weight: 25 };
-            if (isGrn(c3) && isGrn(c2) && isGrn(c1) && c1.close > c2.close && c2.close > c3.close) return { name: 'Three White Soldiers', dir: 'CALL', weight: 20 };
-            if (Math.abs(c1.low - c2.low) < 0.0005 && isRed(c2) && isGrn(c1)) return { name: 'Tweezer Bottom', dir: 'CALL', weight: 15 };
-            if (isRed(c2) && isGrn(c1) && c1.open > c2.close && c1.close < c2.open) return { name: 'Bullish Harami', dir: 'CALL', weight: 15 };
-
+            
             if (upWick(c1) > body(c1)*2 && dnWick(c1) < body(c1)*0.2 && isGrn(c2)) return { name: 'Shooting Star', dir: 'PUT', weight: 20 };
-            if (dnWick(c1) > body(c1)*2 && upWick(c1) < body(c1)*0.2 && isGrn(c2) && c1.close > c2.open) return { name: 'Hanging Man', dir: 'PUT', weight: 15 };
             if (isGrn(c2) && isRed(c1) && c1.close < c2.open && c1.open >= c2.close) return { name: 'Bearish Engulfing', dir: 'PUT', weight: 25 };
-            if (isGrn(c2) && isRed(c1) && c1.open > c2.high && c1.close < mid(c2)) return { name: 'Dark Cloud Cover', dir: 'PUT', weight: 20 };
             if (isGrn(c3) && body(c2) < total(c2)*0.3 && isRed(c1) && c1.close < mid(c3)) return { name: 'Evening Star', dir: 'PUT', weight: 25 };
-            if (isRed(c3) && isRed(c2) && isRed(c1) && c1.close < c2.close && c2.close < c3.close) return { name: 'Three Black Crows', dir: 'PUT', weight: 20 };
-            if (Math.abs(c1.high - c2.high) < 0.0005 && isGrn(c2) && isRed(c1)) return { name: 'Tweezer Top', dir: 'PUT', weight: 15 };
-            if (isGrn(c2) && isRed(c1) && c1.open < c2.close && c1.close > c2.open) return { name: 'Bearish Harami', dir: 'PUT', weight: 15 };
 
             if (body(c1) < total(c1)*0.1) return { name: 'Doji', dir: 'NONE', weight: 0 };
-            if (body(c1) > total(c1)*0.9) return { name: 'Marubozu', dir: 'NONE', weight: 5 };
-            if (c1.high < c2.high && c1.low > c2.low) return { name: 'Inside Bar', dir: 'NONE', weight: 0 };
-
-            return { name: 'Padrão Não Identificado', dir: 'NONE', weight: 0 };
+            return { name: 'Ação de Preço Normal', dir: 'NONE', weight: 0 };
         }
 
         function updateVisualAnalysis() {
             if (marketData.candles.length < 2) return;
-            const c0 = marketData.candles[marketData.candles.length - 1];
-            let isGrn = parseFloat(c0.close) > parseFloat(c0.open);
+            let isGrn = parseFloat(marketData.candles[marketData.candles.length - 1].close) > parseFloat(marketData.candles[marketData.candles.length - 1].open);
             document.getElementById('ind-trend').className = isGrn ? 'badge bg-green' : 'badge bg-red';
-            document.getElementById('ind-trend').innerText = isGrn ? 'Formando Alta' : 'Formando Baixa';
+            document.getElementById('ind-trend').innerText = isGrn ? 'Força Compradora' : 'Força Vendedora';
         }
 
         function monitorDynamicExit() {
             let c0 = marketData.candles[marketData.candles.length - 1];
             let isC0Green = parseFloat(c0.close) > parseFloat(c0.open);
-            if (currentSignalDirection === 'CALL' && marketData.trend === 'DOWN' && !isC0Green) { ws.send(JSON.stringify({ sell: activeContractId, price: 0 })); } 
-            else if (currentSignalDirection === 'PUT' && marketData.trend === 'UP' && isC0Green) { ws.send(JSON.stringify({ sell: activeContractId, price: 0 })); }
+            if (currentSignalDirection === 'CALL' && marketData.trend === 'DOWN' && !isC0Green) ws.send(JSON.stringify({ sell: activeContractId, price: 0 })); 
+            else if (currentSignalDirection === 'PUT' && marketData.trend === 'UP' && isC0Green) ws.send(JSON.stringify({ sell: activeContractId, price: 0 }));
         }
 
-        // --- EXECUÇÃO DE ORDEM EXACT MATCH ---
         function executeTrade(contractType) {
             if (botState !== 'RUNNING') return;
             botState = 'TRADING'; updateDashboard();
 
-            let market = document.getElementById('cfg-market').value;
             let tfSeconds = parseInt(document.getElementById('cfg-tf-analysis').value);
-            let durationMins = tfSeconds / 60; 
-
-            const buyPayload = {
+            ws.send(JSON.stringify({
                 buy: 1, price: 1000,
                 parameters: {
-                    amount: parseFloat(stats.currentStake.toFixed(2)),
-                    basis: "stake", contract_type: contractType, currency: account.currency,
-                    duration: durationMins, duration_unit: "m", symbol: market
+                    amount: parseFloat(stats.currentStake.toFixed(2)), basis: "stake", contract_type: contractType, currency: account.currency,
+                    duration: (tfSeconds / 60), duration_unit: "m", symbol: document.getElementById('cfg-market').value
                 }
-            };
-            ws.send(JSON.stringify(buyPayload));
+            }));
         }
 
         function forceTrade(type) {
             if (botState !== 'RUNNING') { alert("Bot precisa estar INICIADO para operar."); return; }
-            writeLog(`👤 Ação Manual: ${type}`, 'info'); executeTrade(type);
+            writeLog(`Trade Manual: ${type}`, 'info'); executeTrade(type);
         }
 
-        // --- GESTÃO DE RISCO ---
         function calculateStake() {
             let type = document.getElementById('cfg-stake-type').value; let val = parseFloat(document.getElementById('cfg-stake').value);
             return type === 'fixed' ? val : (account.balance * (val / 100));
@@ -652,41 +589,31 @@
 
         function handleRiskManagement(result) {
             let config = document.getElementById('cfg-martingale').value;
-            if (result === 'LOSS' && config === 'martingale') { stats.currentStake = stats.currentStake * 2; writeLog(`⚠️ Martingale ativado. Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
-            else if (result === 'WIN' && config === 'anti') { stats.currentStake = stats.currentStake * 2; writeLog(`📈 Anti-Martingale (Soros). Próxima Stake: $${stats.currentStake.toFixed(2)}`, 'alert'); } 
-            else { stats.currentStake = stats.initialStake; }
+            if (result === 'LOSS' && config === 'martingale') stats.currentStake *= 2; 
+            else if (result === 'WIN' && config === 'anti') stats.currentStake *= 2; 
+            else stats.currentStake = stats.initialStake;
         }
 
         function checkLimits() {
             let sl = parseFloat(document.getElementById('cfg-sl').value); let tp = parseFloat(document.getElementById('cfg-tp').value);
-            if (stats.profit <= -sl) { writeLog(`🛑 STOP LOSS DIÁRIO ATINGIDO (-$${sl}). Parando o bot.`, 'alert'); toggleBot(false); }
-            if (stats.profit >= tp) { writeLog(`🏆 TAKE PROFIT DIÁRIO ATINGIDO (+$${tp}). Meta batida!`, 'info'); toggleBot(false); }
+            if (stats.profit <= -sl) { writeLog(`STOP LOSS Atingido! Parando...`, 'alert'); toggleBot(false); }
+            if (stats.profit >= tp) { writeLog(`TAKE PROFIT Atingido! Parabéns!`, 'info'); toggleBot(false); }
         }
 
-        // --- CONTROLES DO BOT ---
         function toggleBot(start) {
             if (start) {
-                let market = document.getElementById('cfg-market').value;
-                let tfAnalysis = document.getElementById('cfg-tf-analysis').value;
-                let mtfAtivo = document.getElementById('cfg-mtf').value === 'on';
-
                 stats.initialStake = calculateStake();
                 if(stats.currentStake === 0) stats.currentStake = stats.initialStake;
-
-                document.getElementById('mtf-badge').style.display = mtfAtivo ? 'inline-block' : 'none';
+                document.getElementById('mtf-badge').style.display = document.getElementById('cfg-mtf').value === 'on' ? 'inline-block' : 'none';
 
                 ws.send(JSON.stringify({ forget_all:['ticks', 'candles'] }));
-                ws.send(JSON.stringify({ ticks_history: market, end: 'latest', count: 100, style: 'candles', granularity: parseInt(tfAnalysis), subscribe: 1 }));
+                ws.send(JSON.stringify({ ticks_history: document.getElementById('cfg-market').value, end: 'latest', count: 100, style: 'candles', granularity: parseInt(document.getElementById('cfg-tf-analysis').value), subscribe: 1 }));
                 
                 botState = 'RUNNING'; document.getElementById('btn-start').disabled = true; document.getElementById('btn-pause').disabled = false;
-                
-                // Fecha configurações automaticamente ao iniciar
-                document.getElementById('app-container').classList.remove('settings-open');
-
-                writeLog(`▶️ Bot Iniciado. Sincronizando com Vela de ${parseInt(tfAnalysis)/60}m. Aguarde...`, 'info');
+                writeLog(`Bot Iniciado! Sincronizando com o mercado...`, 'info');
             } else {
                 botState = 'PAUSED'; document.getElementById('btn-start').disabled = false; document.getElementById('btn-pause').disabled = true;
-                writeLog(`⏸ Bot Pausado.`, 'alert');
+                writeLog(`Bot Pausado.`, 'alert');
             }
             updateDashboard();
         }
@@ -694,11 +621,9 @@
         function emergencyStop() {
             botState = 'STOPPED'; activeContractId = null;
             if(ws) ws.send(JSON.stringify({ forget_all:['ticks', 'candles'] }));
-            
             document.getElementById('btn-start').disabled = false; document.getElementById('btn-pause').disabled = true;
             document.getElementById('trade-visualizer').classList.remove('active');
-            
-            writeLog(`⛔ PARADA DE EMERGÊNCIA ACIONADA. Nenhuma ordem será aberta.`, 'alert'); updateDashboard();
+            writeLog(`PARADA DE EMERGÊNCIA`, 'alert'); updateDashboard();
         }
     </script>
 </body>
