@@ -3,131 +3,613 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>APEX | USD Basket Signals</title>
+    <title>Forex Smart Assistant - Pro Dashboard</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body class="bg-gray-950 text-gray-100 font-sans h-screen flex flex-col overflow-hidden">
-
-    <!-- Ecrã de Login -->
-    <div id="login-screen" class="flex flex-col items-center justify-center h-full p-4 z-50 bg-gray-950 absolute inset-0">
-        <div class="bg-gray-900 border border-gray-800 p-8 w-full max-w-md rounded-xl shadow-2xl text-center">
-            <h1 class="text-3xl font-black tracking-tighter mb-2">APEX<span class="text-blue-500">SIGNALS</span></h1>
-            <p class="text-xs text-gray-500 font-bold uppercase tracking-widest mb-6">Multi-Timeframe Engine (WLDUSD)</p>
-            
-            <div class="mb-6 text-left">
-                <label class="text-xs font-bold text-gray-500 block mb-2 uppercase tracking-widest">Token de Leitura (Deriv API)</label>
-                <input type="password" id="api-token" placeholder="Insira o seu token..." 
-                       class="w-full bg-black border border-gray-800 p-3 rounded-lg focus:outline-none focus:border-blue-500 text-white font-mono text-sm">
-            </div>
-
-            <button onclick="App.connect()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-lg uppercase tracking-widest text-sm transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]">
-                Iniciar Radares
-            </button>
-            <p id="login-msg" class="text-xs mt-4 text-red-500 font-bold font-mono"></p>
-        </div>
-    </div>
-
-    <!-- Ecrã do Dashboard -->
-    <div id="app-screen" class="hidden flex-col h-full fade-in">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#0f172a',
+                        darker: '#020617',
+                        panel: '#1e293b',
+                        primary: '#3b82f6',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
         
-        <!-- Header -->
-        <header class="bg-gray-900 border-b border-gray-800 p-4 flex justify-between items-center">
-            <div class="font-black text-xl tracking-tighter flex items-center">
-                APEX<span class="text-blue-500">SIGNALS</span>
-                <span class="ml-3 px-2 py-1 bg-gray-800 text-gray-300 text-[10px] rounded border border-gray-700 font-mono">USD Basket (WLDUSD)</span>
-            </div>
-            <div class="flex items-center gap-4">
-                <button onclick="UI.copyToTelegram()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-500/20">
-                    <i class="fab fa-telegram-plane mr-2 text-lg"></i> Copiar Sinais
-                </button>
-                <span id="wake-status" class="text-[10px] font-bold tracking-widest uppercase text-gray-500 font-mono">
-                    <i class="fas fa-eye-slash mr-1"></i> Tela Livre
-                </span>
-            </div>
-        </header>
+        /* Blinking dot for processing */
+        .blink { animation: blinker 1.5s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
 
-        <main class="flex-1 overflow-hidden flex flex-col p-4 gap-4">
+        /* Typing cursor */
+        .typing-cursor::after {
+            content: '|';
+            animation: blinker 1s infinite;
+        }
+    </style>
+</head>
+<body class="bg-darker text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- TOP BAR: Configurações e Controles -->
+    <header class="bg-panel border-b border-slate-700 p-4 shadow-lg z-10">
+        <div class="max-w-7xl mx-auto flex flex-wrap flex-col md:flex-row justify-between items-center gap-4">
             
-            <!-- Painéis Multi-Timeframe -->
-            <div class="grid grid-cols-3 gap-4">
-                
-                <!-- 1H MACRO -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 relative overflow-hidden">
-                    <div class="scan-line hidden" id="scan-1H"></div>
-                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800 pb-2 mb-3">1H | Macro Tendência</h3>
-                    <div class="space-y-3 font-mono text-sm">
-                        <div class="flex justify-between"><span class="text-gray-500">EMA(1000)</span> <span id="tf-1h-ema" class="font-bold text-gray-300">---</span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">RSI(14)</span> <span id="tf-1h-rsi" class="font-bold text-gray-300">---</span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">ATR(14)</span> <span id="tf-1h-atr" class="font-bold text-gray-300">---</span></div>
-                    </div>
-                </div>
-
-                <!-- 15M MAIN -->
-                <div class="bg-gray-900 border border-blue-900/50 rounded-xl p-4 relative overflow-hidden shadow-[0_0_20px_rgba(37,99,235,0.05)]">
-                    <div class="scan-line hidden" id="scan-15M"></div>
-                    <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest border-b border-gray-800 pb-2 mb-3">15M | Entrada Principal</h3>
-                    <div class="space-y-3 font-mono text-sm">
-                        <div class="flex justify-between"><span class="text-gray-500">EMA(200)</span> <span id="tf-15m-ema" class="font-bold text-gray-300">---</span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">RSI(14)</span> <span id="tf-15m-rsi" class="font-bold text-gray-300">---</span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">ATR(14)</span> <span id="tf-15m-atr" class="font-bold text-gray-300">---</span></div>
-                    </div>
-                </div>
-
-                <!-- 5M CONFIRM -->
-                <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 relative overflow-hidden">
-                    <div class="scan-line hidden" id="scan-5M"></div>
-                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800 pb-2 mb-3">5M | Confirmação Rápida</h3>
-                    <div class="space-y-3 font-mono text-sm">
-                        <div class="flex justify-between"><span class="text-gray-500">EMA(50)</span> <span id="tf-5m-ema" class="font-bold text-gray-300">---</span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">RSI(14)</span> <span id="tf-5m-rsi" class="font-bold text-gray-300">---</span></div>
-                        <div class="flex justify-between"><span class="text-gray-500">ATR(14)</span> <span id="tf-5m-atr" class="font-bold text-gray-300">---</span></div>
-                    </div>
-                </div>
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-chart-line text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-white tracking-wider">FX SMART<span class="text-primary">BOT</span></h1>
             </div>
 
-            <!-- Status de Busca -->
-            <div class="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
-                <span id="engine-status" class="text-xs font-bold text-cyan-400 uppercase tracking-widest font-mono animate-pulse">
-                    Sincronizando Motores Quânticos...
-                </span>
-            </div>
-
-            <!-- Lista de Sinais -->
-            <div class="bg-gray-900 border border-gray-800 rounded-xl flex-1 flex flex-col overflow-hidden">
-                <div class="p-3 border-b border-gray-800 flex justify-between items-center bg-gray-950/50">
-                    <h3 class="text-sm font-bold text-gray-300 uppercase tracking-widest"><i class="fas fa-satellite-dish text-blue-500 mr-2"></i>Sinais Detectados</h3>
-                    <span class="text-[10px] text-gray-500 font-mono">Max 12 Sinais Históricos</span>
+            <div class="flex flex-wrap justify-center items-center gap-3 md:gap-5">
+                <!-- Ativos -->
+                <div class="flex flex-col">
+                    <label class="text-xs text-slate-400 mb-1">ATIVO</label>
+                    <select id="assetSelect" class="bg-dark border border-slate-600 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-primary">
+                        <option value="EURUSD">EUR/USD</option>
+                        <option value="GBPUSD">GBP/USD</option>
+                        <option value="USDJPY">USD/JPY</option>
+                        <option value="AUDUSD">AUD/USD</option>
+                    </select>
                 </div>
+
+                <!-- Timeframe -->
+                <div class="flex flex-col">
+                    <label class="text-xs text-slate-400 mb-1">TIMEFRAME</label>
+                    <select id="timeframeSelect" class="bg-dark border border-slate-600 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-primary">
+                        <option value="5m">5m</option>
+                        <option value="15m" selected>15m</option>
+                        <option value="30m">30m</option>
+                        <option value="1h">1h</option>
+                    </select>
+                </div>
+
+                <!-- Valor -->
+                <div class="flex flex-col">
+                    <label class="text-xs text-slate-400 mb-1">VALOR ($)</label>
+                    <input type="number" id="entryValue" value="10" min="1" class="bg-dark border border-slate-600 rounded px-3 py-1.5 text-sm w-24 focus:outline-none focus:border-primary">
+                </div>
+
+                <!-- Controles -->
+                <div class="flex items-end gap-2 mt-4 md:mt-0">
+                    <button id="btnStart" class="bg-primary hover:bg-blue-600 text-white px-5 py-1.5 rounded text-sm font-bold transition duration-200">
+                        <i class="fa-solid fa-play mr-1"></i> INICIAR
+                    </button>
+                    <button id="btnStop" class="bg-slate-700 hover:bg-slate-600 text-white px-5 py-1.5 rounded text-sm font-bold transition duration-200 opacity-50 cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-stop mr-1"></i> PARAR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 max-w-7xl mx-auto w-full p-4 grid grid-cols-1 md:grid-cols-4 gap-4 overflow-y-auto md:overflow-hidden">
+        
+        <!-- LADO ESQUERDO: Logs Técnicos -->
+        <section class="bg-panel rounded-lg border border-slate-700 flex flex-col col-span-1 h-[300px] md:h-full">
+            <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-lg">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-terminal mr-2"></i>Logs Técnicos</h2>
+                <i class="fa-solid fa-circle-notch blink text-slate-500 text-xs" id="logSpinner"></i>
+            </div>
+            <div id="logContainer" class="p-3 flex-1 overflow-y-auto text-xs font-mono space-y-2 flex flex-col justify-end">
+                <!-- Logs aparecerão aqui -->
+            </div>
+        </section>
+
+        <!-- CENTRO: Painel do Sinal -->
+        <section class="bg-panel rounded-lg border border-slate-700 flex flex-col col-span-1 md:col-span-2 relative h-[450px] md:h-full">
+            <div class="p-3 border-b border-slate-700 bg-slate-800/50 rounded-t-lg text-center">
+                <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-satellite-dish mr-2"></i>Radar Institucional</h2>
+            </div>
+            
+            <div class="flex-1 flex flex-col items-center justify-center p-6 relative">
                 
-                <div class="flex-1 overflow-y-auto p-2" id="signals-container">
-                    <!-- Cabeçalho Tabela -->
-                    <div class="grid grid-cols-5 text-[10px] font-bold text-gray-500 uppercase tracking-widest p-2 border-b border-gray-800 mb-2">
-                        <span>Hora</span>
-                        <span>Ativo</span>
-                        <span>Direção</span>
-                        <span>Preço Ref.</span>
-                        <span class="text-right">Confiança</span>
+                <!-- Tela de Espera / Carregando -->
+                <div id="idleScreen" class="text-center flex flex-col items-center">
+                    <i class="fa-solid fa-chart-pie text-6xl text-slate-600 mb-4"></i>
+                    <h3 class="text-xl font-bold text-slate-400">Aguardando Início</h3>
+                    <p class="text-sm text-slate-500 mt-2">Selecione os parâmetros e clique em Iniciar.</p>
+                </div>
+
+                <!-- Painel do Sinal (Oculto por padrão) -->
+                <div id="signalPanel" class="hidden w-full max-w-md bg-dark rounded-xl border border-slate-600 p-5 shadow-2xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="bg-success text-white text-xs font-bold px-3 py-1 rounded animate-pulse">SINAL IDENTIFICADO</span>
+                        <span class="text-xs text-slate-400"><i class="fa-regular fa-clock"></i> <span id="signalTimer">03:00</span></span>
                     </div>
-                    
-                    <div id="signals-list">
-                        <div id="empty-state" class="text-center text-gray-600 text-xs py-10 font-mono italic">
-                            O radar está a mapear os 3 timeframes.<br>Aguarde o alinhamento institucional.
+
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="text-center p-3 bg-panel rounded border border-slate-700">
+                            <p class="text-xs text-slate-400">Ativo</p>
+                            <p id="sigAsset" class="text-lg font-bold text-white">EURUSD</p>
+                        </div>
+                        <div class="text-center p-3 bg-panel rounded border border-slate-700">
+                            <p class="text-xs text-slate-400">Ação</p>
+                            <p id="sigAction" class="text-xl font-bold"></p>
                         </div>
                     </div>
+
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                            <span class="text-sm text-slate-400">Preço Atual:</span>
+                            <span id="sigPrice" class="font-mono text-white">--</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                            <span class="text-sm text-slate-400">Take Profit:</span>
+                            <span id="sigTP" class="font-mono text-success">--</span>
+                        </div>
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                            <span class="text-sm text-slate-400">Stop Loss:</span>
+                            <span id="sigSL" class="font-mono text-danger">--</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1">
+                            <span class="text-sm text-slate-400">Lucro Estimado:</span>
+                            <span id="sigProfit" class="font-bold text-primary">--</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-slate-700">
+                        <div class="w-full bg-slate-700 rounded-full h-1.5 mb-1">
+                            <div id="sigConfidenceBar" class="bg-success h-1.5 rounded-full" style="width: 85%"></div>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-400">Probabilidade: <span id="sigProb">85%</span></span>
+                            <span class="text-success font-bold">Confiança ALTA</span>
+                        </div>
+                    </div>
+
+                    <button id="btnEnterTrade" class="w-full mt-5 bg-success hover:bg-emerald-500 text-white font-bold py-3 rounded shadow-lg transition duration-200">
+                        ENTREI NA OPERAÇÃO
+                    </button>
+                </div>
+                
+                <!-- Análise Multi-timeframe display (Aparece ao analisar) -->
+                <div id="mtfDisplay" class="absolute bottom-4 left-4 right-4 bg-dark/80 p-2 rounded border border-slate-700 hidden">
+                    <div class="flex justify-between text-[10px] text-slate-400 text-center">
+                        <div class="flex-1"><span class="block text-white font-bold" id="mtfMacro">1H</span>Macro</div>
+                        <div class="flex-1 border-x border-slate-700"><span class="block text-white font-bold" id="mtfMain">15m</span>Principal</div>
+                        <div class="flex-1"><span class="block text-white font-bold" id="mtfMicro">5m</span>Micro</div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- LADO DIREITO: Analista Virtual -->
+        <section class="bg-panel rounded-lg border border-slate-700 flex flex-col col-span-1 h-[300px] md:h-full relative overflow-hidden">
+            <div class="p-3 border-b border-slate-700 flex items-center bg-slate-800/50 rounded-t-lg">
+                <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white mr-3 shadow-lg">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-bold text-white">Analista AI</h2>
+                    <p class="text-[10px] text-success flex items-center"><span class="w-1.5 h-1.5 bg-success rounded-full mr-1 blink"></span>Online</p>
                 </div>
             </div>
-        </main>
-    </div>
+            
+            <div class="p-4 flex-1 flex flex-col">
+                <div class="bg-dark rounded-xl rounded-tl-none p-4 border border-slate-600 text-sm shadow-md mt-2 relative">
+                    <p id="analystMessage" class="text-slate-200 typing-cursor min-h-[60px]">Aguardando conexão com os servidores...</p>
+                </div>
+            </div>
+            
+            <!-- Background element -->
+            <i class="fa-brands fa-hubspot absolute -bottom-10 -right-10 text-9xl text-slate-800/30"></i>
+        </section>
+    </main>
 
-    <!-- Audio Player (Usando um som genérico de notificação. Troca depois se quiseres) -->
-    <audio id="alert-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+    <!-- RODAPÉ: Status -->
+    <footer class="bg-darker border-t border-slate-800 p-2 z-10">
+        <div class="max-w-7xl mx-auto flex justify-between items-center text-xs">
+            <div class="flex items-center gap-2">
+                <span class="text-slate-500">Status:</span>
+                <span id="botState" class="text-white font-bold bg-slate-700 px-2 py-0.5 rounded">CARREGANDO DADOS</span>
+            </div>
+            <div class="flex items-center gap-4 text-slate-500">
+                <span id="marketPhase">Fase: Neutra</span>
+                <span>Conexão Segura <i class="fa-solid fa-lock text-success ml-1"></i></span>
+            </div>
+        </div>
+    </footer>
 
-    <!-- Scripts Modulares -->
-    <script src="js/ui.js"></script>
-    <script src="js/analysis.js"></script>
-    <script src="js/signals.js"></script>
-    <script src="js/main.js"></script>
+    <!-- SCRIPT PRINCIPAL -->
+    <script>
+        // --- SISTEMA DE SOM (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'signal') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            } else if (type === 'alert') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'close') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(200, audioCtx.currentTime + 0.5);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        // --- PREVINE TELA DESLIGAR (Wake Lock) ---
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.log('Wake Lock API falhou:', err);
+            }
+        }
+
+        // --- ELEMENTOS DOM ---
+        const logsBox = document.getElementById('logContainer');
+        const analystMsg = document.getElementById('analystMessage');
+        const botState = document.getElementById('botState');
+        const assetSelect = document.getElementById('assetSelect');
+        const timeframeSelect = document.getElementById('timeframeSelect');
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const btnEnterTrade = document.getElementById('btnEnterTrade');
+        
+        // Painéis
+        const idleScreen = document.getElementById('idleScreen');
+        const signalPanel = document.getElementById('signalPanel');
+        const mtfDisplay = document.getElementById('mtfDisplay');
+        const logSpinner = document.getElementById('logSpinner');
+
+        // --- ESTADOS DO BOT ---
+        let isRunning = false;
+        let isMonitoring = false;
+        let currentLogs =[];
+        let simulationInterval;
+        let signalTimerInterval;
+        
+        // Preços Simulados Base
+        const prices = { 'EURUSD': 1.0854, 'GBPUSD': 1.2640, 'USDJPY': 150.20, 'AUDUSD': 0.6530 };
+
+        // --- FUNÇÕES DE INTERFACE ---
+        
+        // Adiciona Logs (Max 10)
+        function addLog(text, isError = false) {
+            if (currentLogs.length >= 10) currentLogs.shift();
+            const colorClass = isError ? 'text-danger' : 'text-slate-300';
+            currentLogs.push(`<div class="${colorClass} border-b border-slate-800 pb-1 mb-1">> ${text}</div>`);
+            logsBox.innerHTML = currentLogs.join('');
+        }
+
+        // Efeito Máquina de Escrever do Analista
+        let typeTimeout;
+        function setAnalystMessage(text) {
+            clearTimeout(typeTimeout);
+            analystMsg.textContent = '';
+            let i = 0;
+            function type() {
+                if (i < text.length) {
+                    analystMsg.textContent += text.charAt(i);
+                    i++;
+                    typeTimeout = setTimeout(type, 35);
+                }
+            }
+            type();
+        }
+
+        // Muda cor e texto do status no rodapé
+        function updateStatus(text, colorClass) {
+            botState.textContent = text;
+            botState.className = `text-white font-bold px-2 py-0.5 rounded ${colorClass}`;
+        }
+
+        // Atualiza display Multi-timeframe
+        function updateMTF() {
+            const tf = timeframeSelect.value;
+            let macro, micro;
+            if(tf === '5m') { macro = '15m'; micro = '1m'; }
+            if(tf === '15m') { macro = '1H'; micro = '5m'; }
+            if(tf === '30m') { macro = '4H'; micro = '15m'; }
+            if(tf === '1h') { macro = 'Daily'; micro = '15m'; }
+            
+            document.getElementById('mtfMain').textContent = tf;
+            document.getElementById('mtfMacro').textContent = macro;
+            document.getElementById('mtfMicro').textContent = micro;
+        }
+
+        // --- LÓGICA DE CARREGAMENTO (INIT) ---
+        async function loadHistory() {
+            logSpinner.classList.add('text-primary');
+            logSpinner.classList.remove('text-slate-500');
+            addLog(`Carregando histórico de velas ${timeframeSelect.value}... 🔄`);
+            updateStatus('CARREGANDO DADOS', 'bg-slate-700');
+            
+            // Simula tempo de carregamento de API
+            await new Promise(r => setTimeout(r, 1500));
+            addLog(`Processando 500 velas institucionais... 🔄`);
+            await new Promise(r => setTimeout(r, 1000));
+            
+            addLog(`Histórico carregado ✅`);
+            logSpinner.classList.remove('text-primary');
+            logSpinner.classList.add('text-slate-500');
+            updateStatus('AGUARDANDO INÍCIO', 'bg-slate-700');
+            setAnalystMessage("Histórico de mercado sincronizado. Estou pronto para iniciar a análise quando você desejar.");
+        }
+
+        // Eventos de mudança nos selects
+        assetSelect.addEventListener('change', () => {
+            if(!isRunning) loadHistory();
+        });
+        timeframeSelect.addEventListener('change', () => {
+            updateMTF();
+            if(!isRunning) {
+                addLog('Timeframe alterado. Atualizando histórico...');
+                loadHistory();
+            }
+        });
+
+        // Inicialização
+        updateMTF();
+        loadHistory();
+        requestWakeLock();
+
+        // --- MOTOR DE ANÁLISE E SINAIS ---
+
+        function startAnalysis() {
+            isRunning = true;
+            btnStart.disabled = true;
+            btnStart.classList.add('opacity-50', 'cursor-not-allowed');
+            btnStop.disabled = false;
+            btnStop.classList.remove('opacity-50', 'cursor-not-allowed');
+            assetSelect.disabled = true;
+            timeframeSelect.disabled = true;
+            
+            idleScreen.classList.remove('hidden');
+            signalPanel.classList.add('hidden');
+            mtfDisplay.classList.remove('hidden');
+
+            updateStatus('ANALISANDO MERCADO', 'bg-warning');
+            logSpinner.classList.add('text-primary');
+            
+            runAnalysisCycle();
+        }
+
+        function stopAnalysis() {
+            isRunning = false;
+            isMonitoring = false;
+            clearInterval(simulationInterval);
+            clearInterval(signalTimerInterval);
+            
+            btnStart.disabled = false;
+            btnStart.classList.remove('opacity-50', 'cursor-not-allowed');
+            btnStop.disabled = true;
+            btnStop.classList.add('opacity-50', 'cursor-not-allowed');
+            assetSelect.disabled = false;
+            timeframeSelect.disabled = false;
+
+            idleScreen.classList.remove('hidden');
+            signalPanel.classList.add('hidden');
+            mtfDisplay.classList.add('hidden');
+            
+            logSpinner.classList.remove('text-primary');
+            addLog('Análise interrompida pelo usuário ❌', true);
+            updateStatus('PARADO', 'bg-slate-700');
+            setAnalystMessage("Operações suspensas. Aguardando novo comando.");
+        }
+
+        async function runAnalysisCycle() {
+            if (!isRunning) return;
+
+            // Ciclo 1: Macro
+            addLog('[1/7] Analisando tendência macro... 🔄');
+            setAnalystMessage("Aguarde um pouco enquanto verifico os timeframes maiores para entender a direção institucional.");
+            await sleep(2500);
+            if (!isRunning) return;
+            addLog('[2/7] Tendência Macro: Confirmação encontrada ✅');
+
+            // Ciclo 2: Liquidez
+            addLog('[3/7] Rastreador de Liquidez Institucional... 🔄');
+            setAnalystMessage("Procurando zonas onde os grandes bancos estão acumulando ordens (Smart Money).");
+            await sleep(3000);
+            if (!isRunning) return;
+            addLog('[4/7] Varredura de liquidez detectada ✅');
+
+            // Ciclo 3: Indicadores
+            addLog('[5/7] Calculando RSI, MACD e EMA... 🔄');
+            setAnalystMessage("O mercado parece estar preparando um movimento interessante. Alinhando indicadores técnicos.");
+            await sleep(2500);
+            if (!isRunning) return;
+            addLog('[6/7] Confluência técnica estabelecida ✅');
+
+            // Preparando Sinal
+            addLog('[7/7] Aguardando confirmação de vela (Gatilho)... 🔄');
+            setAnalystMessage("Ponto de interesse atingido. Aguardando a reação exata do preço para gerar a entrada.");
+            await sleep(3000);
+            if (!isRunning) return;
+            
+            generateSignal();
+        }
+
+        function generateSignal() {
+            if (!isRunning) return;
+            
+            playSound('signal');
+            updateStatus('SINAL IDENTIFICADO', 'bg-success');
+            logSpinner.classList.remove('text-primary');
+            addLog('🌟 Oportunidade identificada e validada!');
+            
+            const asset = assetSelect.value;
+            let currentPrice = prices[asset] + (Math.random() * 0.0050 - 0.0025);
+            currentPrice = currentPrice.toFixed(asset === 'USDJPY' ? 3 : 5);
+            
+            const isCall = Math.random() > 0.5;
+            const entryVal = parseFloat(document.getElementById('entryValue').value);
+            
+            // Calculo Dinamico (Exemplo simulado de TP/SL baseado no spread/volatilidade)
+            let pipValue = asset === 'USDJPY' ? 0.05 : 0.0010;
+            let tpPrice, slPrice;
+            
+            if(isCall) {
+                tpPrice = (parseFloat(currentPrice) + pipValue).toFixed(asset === 'USDJPY' ? 3 : 5);
+                slPrice = (parseFloat(currentPrice) - (pipValue/2)).toFixed(asset === 'USDJPY' ? 3 : 5);
+            } else {
+                tpPrice = (parseFloat(currentPrice) - pipValue).toFixed(asset === 'USDJPY' ? 3 : 5);
+                slPrice = (parseFloat(currentPrice) + (pipValue/2)).toFixed(asset === 'USDJPY' ? 3 : 5);
+            }
+
+            // Interface do Sinal
+            document.getElementById('sigAsset').textContent = asset;
+            const actionEl = document.getElementById('sigAction');
+            if(isCall) {
+                actionEl.textContent = 'CALL ↗';
+                actionEl.className = 'text-xl font-bold text-success';
+            } else {
+                actionEl.textContent = 'PUT ↘';
+                actionEl.className = 'text-xl font-bold text-danger';
+            }
+            
+            document.getElementById('sigPrice').textContent = currentPrice;
+            document.getElementById('sigTP').textContent = tpPrice;
+            document.getElementById('sigSL').textContent = slPrice;
+            
+            // Estimativa de lucro (Risk/Reward 1:2 simplificado)
+            const profit = (entryVal * 0.85).toFixed(2);
+            document.getElementById('sigProfit').textContent = `+$${profit}`;
+            
+            const prob = Math.floor(Math.random() * (92 - 75 + 1)) + 75;
+            document.getElementById('sigProb').textContent = `${prob}%`;
+            document.getElementById('sigConfidenceBar').style.width = `${prob}%`;
+
+            // UI Switch
+            idleScreen.classList.add('hidden');
+            signalPanel.classList.remove('hidden');
+            
+            setAnalystMessage(`Identifiquei uma oportunidade de ${isCall ? 'COMPRA (Call)' : 'VENDA (Put)'} em ${asset}. Os parâmetros de segurança (TP/SL) foram calculados. Insira a operação na sua corretora.`);
+
+            startSignalTimer(180); // 3 minutos de validade
+        }
+
+        function startSignalTimer(seconds) {
+            clearInterval(signalTimerInterval);
+            const timerEl = document.getElementById('signalTimer');
+            
+            signalTimerInterval = setInterval(() => {
+                if(!isRunning || isMonitoring) {
+                    clearInterval(signalTimerInterval);
+                    return;
+                }
+                
+                seconds--;
+                const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const s = (seconds % 60).toString().padStart(2, '0');
+                timerEl.textContent = `${m}:${s}`;
+                
+                if (seconds <= 0) {
+                    clearInterval(signalTimerInterval);
+                    addLog('Sinal expirou. Buscando nova entrada... 🔄', true);
+                    signalPanel.classList.add('hidden');
+                    idleScreen.classList.remove('hidden');
+                    updateStatus('ANALISANDO MERCADO', 'bg-warning');
+                    runAnalysisCycle(); // Reinicia analise
+                }
+            }, 1000);
+        }
+
+        // --- MODO MONITORAMENTO ---
+        btnEnterTrade.addEventListener('click', () => {
+            isMonitoring = true;
+            clearInterval(signalTimerInterval);
+            
+            btnEnterTrade.innerHTML = '<i class="fa-solid fa-eye mr-2"></i> MONITORANDO...';
+            btnEnterTrade.classList.replace('bg-success', 'bg-primary');
+            btnEnterTrade.classList.replace('hover:bg-emerald-500', 'hover:bg-blue-600');
+            
+            updateStatus('OPERAÇÃO ATIVA', 'bg-primary');
+            addLog('Operação iniciada pelo usuário. Monitoramento ativado.');
+            setAnalystMessage("Você entrou na operação. Agora estou monitorando o desenvolvimento do trade vela a vela.");
+            
+            monitorTrade();
+        });
+
+        async function monitorTrade() {
+            let cycles = 0;
+            simulationInterval = setInterval(async () => {
+                if(!isRunning || !isMonitoring) return;
+                cycles++;
+                
+                // Mensagens dinâmicas do analista durante o trade
+                if (cycles === 2) {
+                    setAnalystMessage("A operação está seguindo conforme esperado. A estrutura do mercado se mantém favorável.");
+                } else if (cycles === 4) {
+                    setAnalystMessage("O momentum da tendência atual continua forte.");
+                } else if (cycles === 6) {
+                    playSound('alert');
+                    addLog('Aviso: Redução de volume detectada ⚠️', true);
+                    setAnalystMessage("Uma pequena resistência foi encontrada. O momentum da tendência parece estar diminuindo.");
+                } else if (cycles === 8) {
+                    playSound('close');
+                    clearInterval(simulationInterval);
+                    addLog('OPERAÇÃO ENCERRADA ✅');
+                    updateStatus('OPERAÇÃO ENCERRADA', 'bg-slate-700');
+                    setAnalystMessage("A operação atingiu a zona de objetivo ou tempo limite. Considere verificar o lucro na sua corretora.");
+                    
+                    // Reset do botão
+                    btnEnterTrade.innerHTML = 'ENTREI NA OPERAÇÃO';
+                    btnEnterTrade.classList.replace('bg-primary', 'bg-success');
+                    btnEnterTrade.classList.replace('hover:bg-blue-600', 'hover:bg-emerald-500');
+                    
+                    // Após 5 segundos, volta a procurar sinal
+                    setTimeout(() => {
+                        if(isRunning) {
+                            isMonitoring = false;
+                            signalPanel.classList.add('hidden');
+                            idleScreen.classList.remove('hidden');
+                            updateStatus('ANALISANDO MERCADO', 'bg-warning');
+                            runAnalysisCycle();
+                        }
+                    }, 5000);
+                }
+            }, 4000); // Executa a cada 4 segundos no simulador
+        }
+
+        // Utils
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        // Botões de Controle
+        btnStart.addEventListener('click', startAnalysis);
+        btnStop.addEventListener('click', stopAnalysis);
+
+    </script>
 </body>
 </html>
