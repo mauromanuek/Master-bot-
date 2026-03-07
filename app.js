@@ -1,16 +1,12 @@
-// ==========================================
-// CONFIGURAÇÕES API DERIV E ESTADO
-// ==========================================
 const APP_ID = 121512;
 let ws;
 let isConnected = false;
 let activeCandleSub = null;
 let chart, candleSeries, smaSeries;
-let priceLines =[]; // Array de suportes e resistências
-let candleData =[]; // Array das velas carregadas
+let priceLines = []; 
+let candleData =[]; 
 let currentSignalContractType = '';
 
-// Elementos da Interface
 const assetSelect = document.getElementById('assetSelect');
 const timeframeSelect = document.getElementById('timeframeSelect');
 const stakeInput = document.getElementById('stakeInput');
@@ -19,26 +15,33 @@ const btnStart = document.getElementById('btnStart');
 const btnReset = document.getElementById('btnReset');
 const btnExecute = document.getElementById('btnExecuteTrade');
 
-// ==========================================
-// ÁUDIO E ANIMAÇÃO DA INTELIGÊNCIA ARTIFICIAL
-// ==========================================
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
 function playSound(type) {
     try {
-        if(audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
         const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
         osc.connect(gain); gain.connect(audioCtx.destination);
+        
         if (type === 'success') {
-            osc.type = 'sine'; osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3);
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-        } else {
-            osc.type = 'square'; osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-            gain.gain.setValueAtTime(0.05, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); 
+            osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.3); 
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        } else if (type === 'alert') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
         }
-    } catch(e){}
+    } catch (e) {
+        console.warn("Áudio não suportado ou bloqueado no navegador.");
+    }
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -58,28 +61,30 @@ function updateAI(text) {
     type();
 }
 
-// Bloqueia Forex no fim de semana
 function checkWeekendStatus() {
     const isWeekend = (new Date().getDay() === 0 || new Date().getDay() === 6);
     const isForex = assetSelect.value.startsWith('frx');
     const alertBox = document.getElementById('weekendAlert');
     
     if (isWeekend && isForex) {
-        alertBox.classList.remove('hidden'); alertBox.classList.add('flex');
-        btnStart.disabled = true; btnStart.classList.add('opacity-50', 'cursor-not-allowed');
+        alertBox.classList.remove('hidden'); 
+        alertBox.classList.add('flex');
+        btnStart.disabled = true; 
+        btnStart.classList.add('opacity-50', 'cursor-not-allowed');
         return true;
     } else {
-        alertBox.classList.add('hidden'); alertBox.classList.remove('flex');
-        btnStart.disabled = false; btnStart.classList.remove('opacity-50', 'cursor-not-allowed');
+        alertBox.classList.add('hidden'); 
+        alertBox.classList.remove('flex');
+        btnStart.disabled = false; 
+        btnStart.classList.remove('opacity-50', 'cursor-not-allowed');
         return false;
     }
 }
 
-// ==========================================
-// GRÁFICOS (TRADINGVIEW LIGHTWEIGHT CHARTS)
-// ==========================================
 function initChart() {
     const container = document.getElementById('tvchart');
+    if (chart) chart.remove();
+
     chart = LightweightCharts.createChart(container, {
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#d1d4dc' },
         grid: { vertLines: { color: 'rgba(43, 49, 57, 0.4)' }, horzLines: { color: 'rgba(43, 49, 57, 0.4)' } },
@@ -97,7 +102,6 @@ function initChart() {
         color: 'rgba(56, 189, 248, 0.8)', lineWidth: 2, crosshairMarkerVisible: false
     });
 
-    // Redimensionamento responsivo automático
     new ResizeObserver(entries => {
         if (entries.length === 0 || entries[0].target !== container) return;
         const newRect = entries[0].contentRect;
@@ -105,7 +109,6 @@ function initChart() {
     }).observe(container);
 }
 
-// Cálculo Matemático da Média Móvel
 function calcSMA(data, period) {
     let sma =[];
     for (let i = 0; i < data.length; i++) {
@@ -117,99 +120,120 @@ function calcSMA(data, period) {
     return sma;
 }
 
-// ==========================================
-// CONEXÃO WEBSOCKET DERIV V3
-// ==========================================
-document.getElementById('btnConnect').addEventListener('click', () => {
+// LÓGICA DE CONEXÃO
+function connectWS() {
     const token = document.getElementById('apiToken').value.trim();
     if(!token) return;
-    
-    document.getElementById('btnConnectText').innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> CONECTANDO...';
-    ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`);
-    
-    ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
 
-    // Ping Keep-Alive
-    setInterval(() => { if(ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ ping: 1 })); }, 20000);
+    document.getElementById('btnConnectText').innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> CONECTANDO...';
+    
+    if (ws) ws.close();
+
+    ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`);
+
+    ws.onopen = () => {
+        ws.send(JSON.stringify({ authorize: token }));
+    };
 
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
 
-        // Tratamento de Erro
+        // 1. Tratamento de Erros
         if(data.error) {
+            console.error("Erro API:", data.error.message);
+            updateAI(`❌ Erro: ${data.error.message}`);
             if(data.msg_type === 'authorize') {
                 document.getElementById('loginError').textContent = data.error.message;
                 document.getElementById('loginError').classList.remove('hidden');
                 document.getElementById('btnConnectText').textContent = 'TENTAR NOVAMENTE';
-                ws.close();
             }
             if(data.msg_type === 'buy') {
-                updateAI(`❌ Erro da Corretora: ${data.error.message}`);
-                btnExecute.innerHTML = '<i class="fa-solid fa-bolt mr-2"></i> EXECUTAR ORDEM';
+                btnExecute.innerHTML = '<i class="fa-solid fa-bolt mr-2"></i> EXECUTAR ORDEM REAL';
                 btnExecute.disabled = false;
             }
             return;
         }
 
-        // Login Bem-sucedido
+        // 2. Autorização
         if(data.msg_type === 'authorize') {
             isConnected = true;
+            ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+            
             document.getElementById('accountBalance').textContent = `${data.authorize.balance} ${data.authorize.currency}`;
             const tEl = document.getElementById('accountType');
             tEl.textContent = data.authorize.is_virtual ? 'DEMO' : 'REAL';
             tEl.className = data.authorize.is_virtual ? 'text-[9px] font-bold text-accent bg-accent/20 px-1.5 rounded' : 'text-[9px] font-bold text-buy bg-buy/20 px-1.5 rounded';
             
-            document.getElementById('loginView').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('loginView').classList.add('hidden');
-                document.getElementById('dashboardView').classList.remove('hidden');
-                document.getElementById('dashboardView').classList.add('flex');
-                initChart();
-                loadAssetStream(assetSelect.value); // Carrega gráfico
-            }, 500);
+            document.getElementById('loginView').classList.add('hidden');
+            document.getElementById('dashboardView').classList.remove('hidden');
+            document.getElementById('dashboardView').classList.add('flex');
+            
+            initChart();
+            loadAssetStream(assetSelect.value);
         }
 
-        // Carga Inicial do Histórico (Candles)
+        // 3. Atualização de Saldo
+        if(data.msg_type === 'balance') {
+            document.getElementById('accountBalance').textContent = `${data.balance.balance} ${data.balance.currency}`;
+        }
+
+        // 4. Histórico de Velas
         if(data.msg_type === 'candles') {
-            candleData = data.candles.map(c => ({ time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close }));
+            candleData = data.candles.map(c => ({ 
+                time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close 
+            }));
             candleSeries.setData(candleData);
             smaSeries.setData(calcSMA(candleData, 20)); 
-            
             if(data.subscription) activeCandleSub = data.subscription.id;
         }
 
-        // Velas em tempo real (OHLC Tick Stream)
+        // 5. Atualização da Vela Atual
         if(data.msg_type === 'ohlc') {
             const c = data.ohlc;
-            const liveCandle = { time: c.open_time, open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low), close: parseFloat(c.close) };
+            const liveCandle = { 
+                time: c.open_time, open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low), close: parseFloat(c.close) 
+            };
             
             candleSeries.update(liveCandle);
-            const currentSMA = calcSMA([...candleData.slice(0, -1), liveCandle], 20);
-            smaSeries.update(currentSMA[currentSMA.length - 1]);
+            
+            const lastSMA = calcSMA([...candleData.slice(-20), liveCandle], 20);
+            if (lastSMA.length > 0) smaSeries.update(lastSMA[lastSMA.length - 1]);
 
-            // Atualiza preço visual da tela
             document.getElementById('chartPrice').textContent = liveCandle.close.toFixed(assetSelect.value.includes('JPY') ? 3 : 5);
         }
 
-        // Resposta da Compra Real executada
+        // 6. Confirmação de Compra
         if(data.msg_type === 'buy') {
-            updateAI(`✅ Operação Real em Andamento! (ID: ${data.buy.transaction_id}). O mercado está seguindo a análise.`);
-            startTradeTimer(60); // 1 Minuto simulado na interface visual
+            const id = data.buy.transaction_id || data.buy.contract_id;
+            updateAI(`✅ Ordem enviada! ID: ${id}`);
+            startTradeTimer(60); 
         }
     };
-});
+
+    ws.onclose = () => {
+        isConnected = false;
+        console.log("Conexão encerrada. Tentando reconectar...");
+    };
+}
+
+document.getElementById('btnConnect').addEventListener('click', connectWS);
 
 function loadAssetStream(symbol) {
-    document.getElementById('chartTitle').textContent = assetSelect.options[assetSelect.selectedIndex].text;
     if(!ws || ws.readyState !== WebSocket.OPEN) return;
     
-    // Cancela subscrição antiga
-    if(activeCandleSub) ws.send(JSON.stringify({ forget: activeCandleSub }));
+    if(activeCandleSub) {
+        ws.send(JSON.stringify({ forget: activeCandleSub }));
+        activeCandleSub = null;
+    }
     
-    // Assina novo ativo (Granularidade: 5M=300, 15M=900)
-    const gran = timeframeSelect.value === '5M' ? 300 : 900;
-    ws.send(JSON.stringify({ ticks_history: symbol, style: 'candles', end: 'latest', count: 100, granularity: gran, subscribe: 1 }));
+    // Configura 15M (900s) ou 5M (300s)
+    const gran = timeframeSelect.value === '5M' ? 300 : 900; 
     
+    ws.send(JSON.stringify({ 
+        ticks_history: symbol, style: 'candles', end: 'latest', count: 100, granularity: gran, subscribe: 1 
+    }));
+    
+    document.getElementById('chartTitle').textContent = assetSelect.options[assetSelect.selectedIndex].text;
     resetAnalysis();
     checkWeekendStatus();
 }
@@ -217,26 +241,23 @@ function loadAssetStream(symbol) {
 assetSelect.addEventListener('change', () => loadAssetStream(assetSelect.value));
 timeframeSelect.addEventListener('change', () => loadAssetStream(assetSelect.value));
 
-// ==========================================
-// ALGORITMO SMC (SMART MONEY CONCEPTS)
-// ==========================================
+// LÓGICA DE ANÁLISE SMC
 btnStart.addEventListener('click', async () => {
     if(checkWeekendStatus() || candleData.length < 50) return;
     
     btnStart.classList.add('hidden');
-    assetSelect.disabled = true; timeframeSelect.disabled = true;
+    assetSelect.disabled = true; 
+    timeframeSelect.disabled = true;
 
     resetAnalysis();
 
     const highs = candleData.map(c => c.high);
     const lows = candleData.map(c => c.low);
-    const currentPrice = candleData[candleData.length-1].close;
+    const currentPrice = candleData[candleData.length - 1].close;
 
-    // Acha topos e fundos das últimas 50 velas
     const maxPrice = Math.max(...highs.slice(-50));
     const minPrice = Math.min(...lows.slice(-50));
 
-    // [Passo 1] DESENHAR SUPORTE E RESISTÊNCIA
     updateAI("Desenhando Suportes e Resistências para capturar a liquidez (Teoria de Dow).");
     await sleep(2000);
     
@@ -245,31 +266,29 @@ btnStart.addEventListener('click', async () => {
     priceLines.push(resLine, supLine);
     playSound('alert');
 
-    // [Passo 2] MARCAR ORDER BLOCKS (OB) E BOS (CHoCH)
     updateAI("Analisando Order Blocks (OB) e mapeando o Rompimento de Estrutura (BOS) nas velas recentes...");
     await sleep(2500);
 
     let markers =[];
-    
-    // Identifica um Order Block dinamicamente (Pega a vela máxima das últimas 20)
     let obIndex = candleData.length - 20;
+    const sliceHighs = highs.slice(-20, -5);
+    const maxInSlice = Math.max(...sliceHighs);
+    
     for(let i = candleData.length - 20; i < candleData.length - 5; i++) {
-        if(candleData[i].high === Math.max(...highs.slice(-20, -5))) obIndex = i;
+        if(candleData[i].high === maxInSlice) { obIndex = i; break; }
     }
+    
     markers.push({ time: candleData[obIndex].time, position: 'aboveBar', color: '#F59E0B', shape: 'arrowDown', text: 'OB (Suprimento)' });
     
-    // Marcador visual de Quebra de Estrutura (BOS) perto do preço atual
     const bosIndex = candleData.length - 5;
     markers.push({ time: candleData[bosIndex].time, position: 'belowBar', color: '#38BDF8', shape: 'arrowUp', text: 'BOS / CHoCH' });
     
     candleSeries.setMarkers(markers);
     playSound('alert');
 
-    // [Passo 3] DECISÃO INSTITUCIONAL
-    updateAI("Confluência detectada com SMA. Gerando o sinal com gestão de risco ativada.");
+    updateAI("Confluência detectada. Gerando o sinal com gestão de risco ativada.");
     await sleep(2000);
 
-    // Estratégia simples: Compra se estiver na metade inferior do canal, Vende se na superior
     const midPoint = (maxPrice + minPrice) / 2;
     const isCall = currentPrice < midPoint;
     currentSignalContractType = isCall ? 'CALL' : 'PUT';
@@ -285,7 +304,6 @@ function showSignalUI(type, price) {
     dirEl.innerHTML = type === 'CALL' ? 'CALL ↗' : 'PUT ↘';
     dirEl.className = `text-4xl font-black tracking-wider ${type === 'CALL' ? 'text-buy' : 'text-sell'}`;
 
-    // Risco Retorno Estético no Painel 
     const pip = assetSelect.value.startsWith('R_') ? 1.5 : (assetSelect.value.includes('JPY') ? 0.150 : 0.00150);
     let tp = type === 'CALL' ? price + (pip * 2) : price - (pip * 2);
     let sl = type === 'CALL' ? price - pip : price + pip;
@@ -295,13 +313,10 @@ function showSignalUI(type, price) {
     document.getElementById('sigTP').textContent = tp.toFixed(dec);
     document.getElementById('sigSL').textContent = sl.toFixed(dec);
 
-    updateAI(`Operação montada: ${type === 'CALL' ? 'COMPRA' : 'VENDA'} confirmada pelo Order Block. Clique em Executar para disparar na Deriv.`);
+    updateAI(`Operação montada: ${type === 'CALL' ? 'COMPRA' : 'VENDA'} confirmada. Clique em Executar para disparar na Deriv.`);
     btnReset.classList.remove('hidden'); 
 }
 
-// ==========================================
-// EXECUÇÃO DE TRADE REAL
-// ==========================================
 btnExecute.addEventListener('click', () => {
     btnExecute.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> ENVIANDO...';
     btnExecute.disabled = true;
@@ -309,7 +324,6 @@ btnExecute.addEventListener('click', () => {
     
     const stake = parseFloat(document.getElementById('stakeInput').value) || 10;
     
-    // Disparo API V3 Deriv
     ws.send(JSON.stringify({
         buy: 1,
         price: stake,
@@ -325,7 +339,6 @@ btnExecute.addEventListener('click', () => {
     }));
 });
 
-// Timer do Trade
 let timerInterval;
 function startTradeTimer(seconds) {
     document.getElementById('timerDisplay').classList.remove('hidden');
@@ -334,14 +347,14 @@ function startTradeTimer(seconds) {
     clearInterval(timerInterval);
     timerInterval = setInterval(() => {
         s--;
-        const ms = String(Math.floor(s/60)).padStart(2,'0');
-        const ss = String(s%60).padStart(2,'0');
+        const ms = String(Math.floor(s / 60)).padStart(2, '0');
+        const ss = String(s % 60).padStart(2, '0');
         document.getElementById('timerValue').textContent = `${ms}:${ss}`;
         
         if (s <= 0) {
             clearInterval(timerInterval);
             playSound('alert');
-            updateAI('Operação Finalizada. O capital investido + lucro/prejuízo já constam no seu saldo acima.');
+            updateAI('Operação Finalizada. O resultado já foi liquidado no seu saldo.');
             
             btnExecute.innerHTML = '<i class="fa-solid fa-bolt mr-2"></i> EXECUTAR ORDEM';
             btnExecute.disabled = false;
@@ -351,8 +364,42 @@ function startTradeTimer(seconds) {
     }, 1000);
 }
 
-// Limpa Desenhos
+// FUNÇÃO FINALIZADA DE RESET
 function resetAnalysis() {
-    priceLines.forEach(pl => candleSeries.removePriceLine(pl));
-    priceLines =[];
-    candleSeries.setMarkers(
+    // Remove as linhas de Suporte e Resistência do gráfico
+    if (priceLines.length > 0) {
+        priceLines.forEach(pl => candleSeries.removePriceLine(pl));
+        priceLines =[];
+    }
+    
+    // Remove os marcadores de OB e BOS do gráfico
+    if (candleSeries) {
+        candleSeries.setMarkers([]); 
+    }
+    
+    // Reseta as variáveis e a UI
+    currentSignalContractType = '';
+    
+    // Esconde o painel de sinal e o timer
+    const signalPanel = document.getElementById('signalPanel');
+    if(signalPanel) signalPanel.classList.add('hidden');
+    
+    const timerDisplay = document.getElementById('timerDisplay');
+    if(timerDisplay) timerDisplay.classList.add('hidden');
+    
+    clearInterval(timerInterval);
+    
+    // Mostra botão start, esconde botão reset
+    btnReset.classList.add('hidden');
+    btnStart.classList.remove('hidden');
+    
+    // Habilita as caixas de seleção novamente
+    assetSelect.disabled = false;
+    timeframeSelect.disabled = false;
+    
+    // Atualiza IA
+    updateAI('Análise resetada. Selecione os parâmetros e clique em "INICIAR ANÁLISE" para mapear novas oportunidades.');
+}
+
+// EVENTO DO BOTÃO RESET (Estava faltando)
+btnReset.addEventListener('click', resetAnalysis);
