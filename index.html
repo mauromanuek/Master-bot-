@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMC Trading Bot | Pro Charting</title>
+    <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 12px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+
+        .header-title h1 {
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .header-title p {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 20px;
+            min-height: calc(100vh - 200px);
+        }
+
+        .panel {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .panel h2 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #fff;
+            border-bottom: 1px solid rgba(71, 85, 105, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: #cbd5e1;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .form-group input::placeholder {
+            color: #64748b;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .button-secondary {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        }
+
+        .button-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .button-success {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        }
+
+        .info-box {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid #3b82f6;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+
+        .info-box.success {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: #22c55e;
+        }
+
+        .info-box.error {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+        }
+
+        .info-box.warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: #f59e0b;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 600px;
+            background: #0f172a;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .chart-wrapper {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .mini-chart {
+            position: relative;
+            height: 300px;
+            background: #0f172a;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .mini-chart-title {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 10;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .stat-value.positive {
+            color: #22c55e;
+        }
+
+        .stat-value.negative {
+            color: #ef4444;
+        }
+
+        .position-item {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .position-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .position-type {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .position-type.call {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .position-type.put {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .position-pl {
+            text-align: right;
+        }
+
+        .position-pl.positive {
+            color: #22c55e;
+        }
+
+        .position-pl.negative {
+            color: #ef4444;
+        }
+
+        .message-box {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .asset-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .asset-tab {
+            padding: 8px 12px;
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .asset-tab:hover {
+            border-color: #3b82f6;
+        }
+
+        .asset-tab.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+
+        .asset-tab.close-btn {
+            padding: 4px 8px;
+            width: auto;
+            min-width: 20px;
+        }
+
+        .scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scrollbar::-webkit-scrollbar-track {
+            background: rgba(71, 85, 105, 0.1);
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(71, 85, 105, 0.3);
+            border-radius: 3px;
+        }
+
+        .scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(71, 85, 105, 0.5);
+        }
+
+        @media (max-width: 1200px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">📈</div>
+                <div class="header-title">
+                    <h1>SMC TRADING BOT</h1>
+                    <p>Análise Técnica Profissional com IA</p>
+                </div>
+            </div>
+            <div id="headerStats" style="display: flex; gap: 20px; align-items: center;">
+                <div style="text-align: right;">
+                    <div style="font-size: 12px; color: #94a3b8;">Saldo Total</div>
+                    <div id="totalBalance" style="font-size: 20px; font-weight: bold; color: #fff;">$0.00</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 12px; color: #94a3b8;">P&L Total</div>
+                    <div id="totalPL" style="font-size: 20px; font-weight: bold; color: #fff;">$0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Left Panel - Controls -->
+            <div class="panel scrollbar">
+                <h2>Conexão</h2>
+                <div class="form-group">
+                    <label>Token API Deriv</label>
+                    <input type="password" id="apiToken" placeholder="Cole seu token...">
+                </div>
+                <button id="connectBtn" onclick="handleConnect()">Conectar</button>
+                <div id="loginError" class="info-box error hidden"></div>
+
+                <div id="connectedPanel" class="hidden" style="margin-top: 20px;">
+                    <h2>Configurações</h2>
+                    <div class="form-group">
+                        <label>Ativo Principal</label>
+                        <select id="assetSelect" onchange="changeAsset()">
+                            <option>R_10</option>
+                            <option>R_25</option>
+                            <option>R_50</option>
+                            <option>R_100</option>
+                            <option>frxEURUSD</option>
+                            <option>frxGBPUSD</option>
+                            <option>frxAUDUSD</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Risco por Trade (%)</label>
+                        <input type="number" id="riskPercent" value="2" min="0.1" max="10">
+                    </div>
+                    <div class="form-group">
+                        <label>Stake</label>
+                        <input type="number" id="stake" value="10" min="1">
+                    </div>
+
+                    <h2 style="margin-top: 20px;">Ações</h2>
+                    <button id="analyzeBtn" onclick="handleAnalyze()" class="button-secondary">Analisar Gráfico</button>
+                    <button id="executeBtn" onclick="handleExecuteTrade()" class="button-success hidden">Executar Trade</button>
+                    <button onclick="handleDisconnect()" class="button-danger">Desconectar</button>
+
+                    <h2 style="margin-top: 20px;">Múltiplos Ativos</h2>
+                    <div class="asset-tabs" id="assetTabs"></div>
+                    <div class="form-group">
+                        <label>Adicionar Ativo</label>
+                        <select id="newAssetSelect">
+                            <option value="">Selecione...</option>
+                            <option>R_10</option>
+                            <option>R_25</option>
+                            <option>R_50</option>
+                            <option>R_100</option>
+                            <option>frxEURUSD</option>
+                            <option>frxGBPUSD</option>
+                            <option>frxAUDUSD</option>
+                        </select>
+                    </div>
+                    <button onclick="addAsset()" class="button-secondary">+ Adicionar Ativo</button>
+                </div>
+            </div>
+
+            <!-- Center - Charts -->
+            <div>
+                <div id="mainChart" class="chart-container"></div>
+                <div id="miniCharts" class="chart-wrapper"></div>
+            </div>
+
+            <!-- Right Panel - Analysis -->
+            <div class="panel scrollbar">
+                <h2>Estatísticas</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Preço Atual</div>
+                        <div id="currentPrice" class="stat-value">0.00</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Tipo de Conta</div>
+                        <div id="accountType" class="stat-value">---</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Posições Abertas</div>
+                        <div id="openCount" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Taxa de Ganho</div>
+                        <div id="winRate" class="stat-value">0%</div>
+                    </div>
+                </div>
+
+                <h2>Posições Abertas</h2>
+                <div id="openPositions" style="max-height: 200px; overflow-y: auto;"></div>
+
+                <h2 style="margin-top: 20px;">Análise IA</h2>
+                <div id="aiMessage" class="message-box">Conecte-se para começar a análise...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="bot.js"></script>
+</body>
+</html>
