@@ -6,6 +6,7 @@ function TradingBot() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
+  const smaSeriesRef = useRef(null);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,48 +20,61 @@ function TradingBot() {
   const [timeframe, setTimeframe] = useState('15M');
   const [stake, setStake] = useState('10');
   
-  // TP e SL Financeiros (Manuais em USD)
-  const [targetProfit, setTargetProfit] = useState(''); // Ganho em $
-  const [stopLoss, setStopLoss] = useState('');         // Perda em $
+  // TP e SL em Dólares
+  const [targetProfit, setTargetProfit] = useState(''); // Ganho $
+  const [stopLoss, setStopLoss] = useState('');         // Perda $
 
   const [candleData, setCandleData] = useState([]);
   const [signal, setSignal] = useState(null);
-  const [aiMessage, setAiMessage] = useState('Gráfico ao vivo conectado. Pressione "Analisar Gráfico" para buscar oportunidades (SMC).');
+  const [aiMessage, setAiMessage] = useState('Gráfico conectado. Clique em "Analisar Gráfico" para SMC.');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  // Controle Financeiro da Operação
-  const [profitLoss, setProfitLoss] = useState(0);
+  // Rastreio da Operação e Lucro/Perda
   const [activeContractId, setActiveContractId] = useState(null);
+  const [profitLoss, setProfitLoss] = useState(0);
 
   const wsRef = useRef(null);
   const activeCandleSubRef = useRef(null);
-  const isClosingRef = useRef(false);
   const priceLineRef = useRef([]);
+  const isClosingRef = useRef(false);
   const APP_ID = 121512;
 
-  // 1. INICIALIZAR GRÁFICO
+  // 1. INICIALIZAÇÃO DO GRÁFICO (Corrigida)
   useEffect(() => {
     if (!isConnected || !chartContainerRef.current) return;
 
+    let chartInstance;
+
     const initChart = async () => {
       try {
-        let attempts = 0;
         let LightweightCharts = window.LightweightCharts;
+        let attempts = 0;
+        
         while (!LightweightCharts && attempts < 50) {
           await new Promise(r => setTimeout(r, 100));
           LightweightCharts = window.LightweightCharts;
           attempts++;
         }
-        if (!LightweightCharts) return;
+        
+        if (!LightweightCharts) {
+          setAiMessage("❌ Erro: Biblioteca de gráficos não carregou.");
+          return;
+        }
 
-        const rect = chartContainerRef.current.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
+        const container = chartContainerRef.current;
+        const rect = container.getBoundingClientRect();
+        
+        // Medidas de segurança para garantir a renderização
+        const width = rect.width > 0 ? rect.width : container.clientWidth || 800;
+        const height = rect.height > 0 ? rect.height : container.clientHeight || 500;
 
-        if (chartRef.current) chartRef.current.remove();
+        if (chartRef.current) {
+          chartRef.current.remove();
+        }
 
-        chartRef.current = LightweightCharts.createChart(chartContainerRef.current, {
-          width: rect.width,
-          height: rect.height,
+        chartInstance = LightweightCharts.createChart(container, {
+          width: width,
+          height: height,
           layout: { background: { type: 'solid', color: '#0f172a' }, textColor: '#cbd5e1' },
           grid: { vertLines: { color: 'rgba(71, 85, 105, 0.3)' }, horzLines: { color: 'rgba(71, 85, 105, 0.3)' } },
           crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
@@ -68,25 +82,40 @@ function TradingBot() {
           rightPriceScale: { borderColor: '#475569' },
         });
 
-        candleSeriesRef.current = chartRef.current.addCandlestickSeries({
+        chartRef.current = chartInstance;
+
+        candleSeriesRef.current = chartInstance.addCandlestickSeries({
           upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444',
         });
 
+        smaSeriesRef.current = chartInstance.addLineSeries({ color: '#3b82f6', lineWidth: 2, crosshairMarkerVisible: false });
+
         const resizeObserver = new ResizeObserver(() => {
-          if (chartRef.current && chartContainerRef.current) {
-            const newRect = chartContainerRef.current.getBoundingClientRect();
-            chartRef.current.applyOptions({ width: newRect.width, height: newRect.height });
+          if (chartInstance && container) {
+            const newRect = container.getBoundingClientRect();
+            if (newRect.width > 0 && newRect.height > 0) {
+              chartInstance.applyOptions({ width: newRect.width, height: newRect.height });
+            }
           }
         });
-        resizeObserver.observe(chartContainerRef.current);
+        resizeObserver.observe(container);
+
+        // Força ajuste inicial
+        chartInstance.timeScale().fitContent();
+
       } catch (error) {
-        console.error(error);
+        console.error("Erro ao criar gráfico:", error);
       }
     };
-    setTimeout(() => initChart(), 100);
+    
+    setTimeout(() => initChart(), 150);
+
+    return () => {
+      if (chartInstance) chartInstance.remove();
+    };
   }, [isConnected]);
 
-  // 2. CONEXÃO WEBSOCKET DERIV E LÓGICA DE DADOS
+  // 2. CONEXÃO DERIV & WEBSOCKET
   const handleConnect = async () => {
     if (!apiToken.trim()) {
       setLoginError('Insira um token válido'); return;
@@ -100,16 +129,16 @@ function TradingBot() {
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        // Tratamento Global de Erros da Deriv
+        // Tratamento de Erros da Corretora
         if (data.error) {
           setAiMessage(`❌ ERRO DA CORRETORA: ${data.error.message}`);
           setIsLoading(false);
           isClosingRef.current = false;
-          if (data.error.code === 'InvalidToken') setLoginError('Token inválido ou sem permissão de trade.');
+          if (data.error.code === 'InvalidToken') setLoginError('Token inválido ou sem permissão de Trade.');
           return;
         }
 
-        // Login Bem Sucedido
+        // Autorização
         if (data.msg_type === 'authorize') {
           setIsConnected(true); setIsLoading(false);
           setAccountBalance(`${data.authorize.balance} ${data.authorize.currency}`);
@@ -118,20 +147,23 @@ function TradingBot() {
           loadAssetStream(asset);
         }
 
-        // Atualização de Saldo
+        // Saldo
         if (data.msg_type === 'balance') {
           setAccountBalance(`${data.balance.balance} ${data.balance.currency}`);
         }
 
-        // Gráfico: Histórico e Tick
+        // Histórico de Velas
         if (data.msg_type === 'candles') {
           const newCandleData = data.candles.map(c => ({
             time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close,
           }));
           setCandleData(newCandleData);
           if (candleSeriesRef.current) candleSeriesRef.current.setData(newCandleData);
+          if (smaSeriesRef.current) smaSeriesRef.current.setData(calcSMA(newCandleData, 20));
           if (data.subscription) activeCandleSubRef.current = data.subscription.id;
         }
+
+        // Tick Atual
         if (data.msg_type === 'ohlc') {
           const c = data.ohlc;
           const liveCandle = { time: c.open_time, open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low), close: parseFloat(c.close) };
@@ -144,9 +176,9 @@ function TradingBot() {
           const contractId = data.buy.contract_id;
           setActiveContractId(contractId);
           isClosingRef.current = false;
-          setAiMessage(`✅ Ordem Aberta (ID: ${contractId}). Monitorando lucro/perda...`);
+          setAiMessage(`✅ Ordem Aberta (ID: ${contractId}). Monitorando lucro e perda...`);
           
-          // O SEGREDO ESTÁ AQUI: Pede para a Deriv enviar o Lucro/Perda ao vivo!
+          // Solicita acompanhamento do contrato ao vivo
           wsRef.current.send(JSON.stringify({
             proposal_open_contract: 1,
             contract_id: contractId,
@@ -154,7 +186,7 @@ function TradingBot() {
           }));
         }
 
-        // === MONITORAMENTO DE LUCRO/PERDA AO VIVO ===
+        // === MONITORAMENTO DE CONTRATO (LUCRO LÍQUIDO) E AUTO-FECHAMENTO ===
         if (data.msg_type === 'proposal_open_contract') {
           const contract = data.proposal_open_contract;
           if (!contract) return;
@@ -162,7 +194,7 @@ function TradingBot() {
           const currentProfit = parseFloat(contract.profit);
           setProfitLoss(currentProfit);
 
-          // VERIFICAR TAKE PROFIT E STOP LOSS FINANCEIRO
+          // Verifica Take Profit e Stop Loss baseados no lucro atual
           if (!isClosingRef.current && !contract.is_sold) {
             const tpValue = targetProfit ? parseFloat(targetProfit) : null;
             const slValue = stopLoss ? parseFloat(stopLoss) : null;
@@ -174,14 +206,14 @@ function TradingBot() {
             }
           }
 
-          // Se a corretora fechar o contrato (ex: expirou o tempo ou foi vendido)
+          // Se a corretora finalizou o contrato
           if (contract.is_sold) {
             setActiveContractId(null);
             setSignal(null);
             isClosingRef.current = false;
             setAiMessage(`🏁 Contrato finalizado. Lucro/Perda final: $${currentProfit.toFixed(2)}`);
-            wsRef.current.send(JSON.stringify({ balance: 1 })); // Atualiza Saldo
-            wsRef.current.send(JSON.stringify({ forget_all: "proposal_open_contract" })); // Limpa dados
+            wsRef.current.send(JSON.stringify({ balance: 1 })); 
+            wsRef.current.send(JSON.stringify({ forget_all: "proposal_open_contract" }));
           }
         }
       };
@@ -190,6 +222,16 @@ function TradingBot() {
     } catch (error) {
       setLoginError('Erro ao conectar'); setIsLoading(false);
     }
+  };
+
+  const calcSMA = (data, period) => {
+    const sma = [];
+    for (let i = period - 1; i < data.length; i++) {
+      let sum = 0;
+      for (let j = 0; j < period; j++) sum += data[i - j].close;
+      sma.push({ time: data[i].time, value: sum / period });
+    }
+    return sma;
   };
 
   const loadAssetStream = (selectedAsset) => {
@@ -206,10 +248,10 @@ function TradingBot() {
     setChartTitle(assetNames[selectedAsset] || selectedAsset);
   };
 
-  // 3. ANÁLISE SMC
+  // 3. ANÁLISE DO GRÁFICO (SMC)
   const handleAnalyze = async () => {
     if (candleData.length < 50) {
-      setAiMessage('❌ Dados do gráfico insuficientes para analisar.'); return;
+      setAiMessage('❌ Aguarde mais velas carregarem.'); return;
     }
     setIsAnalyzing(true); setAiMessage('Analisando Order Blocks e Liquidez...');
 
@@ -220,7 +262,7 @@ function TradingBot() {
       const maxPrice = Math.max(...highs.slice(-50));
       const minPrice = Math.min(...lows.slice(-50));
 
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 800));
 
       if (candleSeriesRef.current) {
         priceLineRef.current.forEach(line => candleSeriesRef.current?.removePriceLine(line));
@@ -230,10 +272,10 @@ function TradingBot() {
       }
 
       const midPoint = (maxPrice + minPrice) / 2;
-      const isCall = currentPriceNum < midPoint; // Se estiver perto do suporte, compra
+      const isCall = currentPriceNum < midPoint; 
 
       setSignal({ type: isCall ? 'CALL' : 'PUT', entryPrice: currentPriceNum });
-      setAiMessage(`✅ Análise SMC: Forte probabilidade de ${isCall ? 'ALTA (CALL)' : 'BAIXA (PUT)'}.`);
+      setAiMessage(`✅ Análise SMC: Probabilidade de ${isCall ? 'ALTA (CALL)' : 'BAIXA (PUT)'}. Configure limites de Ganho/Perda e execute.`);
     } catch (error) {
       setAiMessage('❌ Erro ao analisar gráfico.');
     } finally {
@@ -241,11 +283,10 @@ function TradingBot() {
     }
   };
 
-  // 4. EXECUTAR ORDEM E PARAR BOT
+  // 4. ABRIR E FECHAR ORDEM
   const handleExecuteTrade = () => {
     if (!signal || !wsRef.current) return;
     
-    // Zera os lucros na tela
     setProfitLoss(0);
     setAiMessage('⏳ Enviando ordem para a corretora...');
     
@@ -257,7 +298,7 @@ function TradingBot() {
         basis: 'stake', 
         contract_type: signal.type, 
         currency: 'USD', 
-        duration: 5, // Duração de 5 minutos por padrão
+        duration: 5, // Expira em 5 min se o limite não for alcançado
         duration_unit: 'm', 
         symbol: asset 
       }
@@ -266,16 +307,16 @@ function TradingBot() {
 
   const handleStopBot = (reason = 'Manual') => {
     if (activeContractId && wsRef.current && !isClosingRef.current) {
-      isClosingRef.current = true; // Bloqueia múltiplos cliques
-      setAiMessage(`${reason} - Solicitando fechamento imediato...`);
+      isClosingRef.current = true;
+      setAiMessage(`${reason} - Solicitando fechamento na corretora...`);
       wsRef.current.send(JSON.stringify({ sell: activeContractId, price: 0 }));
     } else if (!activeContractId) {
       setSignal(null);
-      setAiMessage('🛑 Bot limpo. Nenhuma operação em andamento.');
+      setAiMessage('🛑 Bot resetado. Análise apagada da tela.');
     }
   };
 
-  // UI - TELA DE LOGIN
+  // UI - LOGIN
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -290,7 +331,7 @@ function TradingBot() {
             <input type="password" value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder="Cole seu Token API da Deriv (Trade)" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500" />
             {loginError && <p className="text-sm text-red-400 bg-red-500/10 p-3 rounded flex items-center gap-2"><AlertCircle size={16}/> {loginError}</p>}
             <button onClick={handleConnect} disabled={isLoading} className="w-full py-4 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 transition">
-              {isLoading ? 'CONECTANDO...' : 'CONECTAR E ABRIR BOT'}
+              {isLoading ? 'CONECTANDO...' : 'CONECTAR A DERIV'}
             </button>
           </div>
         </div>
@@ -298,7 +339,7 @@ function TradingBot() {
     );
   }
 
-  // UI - TELA PRINCIPAL DO BOT
+  // UI - PRINCIPAL
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col font-sans">
       <header className="bg-slate-800 border-b border-slate-700 px-4 py-3 flex justify-between items-center text-white">
@@ -309,7 +350,7 @@ function TradingBot() {
         </div>
       </header>
 
-      {/* Painel Superior (Inputs) */}
+      {/* Controles Financeiros */}
       <div className="bg-slate-800/50 border-b border-slate-700 p-4 flex flex-wrap gap-4 items-end">
         <div className="flex flex-col"><label className="text-[10px] text-slate-400 mb-1 uppercase">Ativo</label>
         <select value={asset} onChange={(e) => { setAsset(e.target.value); loadAssetStream(e.target.value); }} className="bg-slate-900 border border-slate-600 text-white p-2 rounded text-sm focus:border-blue-500 outline-none">
@@ -338,15 +379,20 @@ function TradingBot() {
       </div>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Gráfico */}
-        <section className="lg:col-span-3 bg-slate-800/50 border border-slate-700 rounded-xl relative shadow-xl">
+        
+        {/* GRÁFICO (Corrigido com Style in-line) */}
+        <section className="lg:col-span-3 bg-slate-800/50 border border-slate-700 rounded-xl relative shadow-xl overflow-hidden">
           <div className="absolute top-4 left-4 z-10 bg-slate-900/80 px-3 py-1 rounded text-white text-xs font-mono border border-slate-700">
             {chartTitle} - <span className="text-cyan-400">{currentPrice}</span>
           </div>
-          <div ref={chartContainerRef} className="w-full h-[400px] lg:h-[600px] rounded-xl overflow-hidden" />
+          <div 
+            ref={chartContainerRef} 
+            className="w-full"
+            style={{ position: 'relative', width: '100%', height: '500px' }} 
+          />
         </section>
 
-        {/* Sidebar Status e Controle */}
+        {/* LOG E SINAIS */}
         <section className="flex flex-col gap-4">
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 shadow-xl">
             <h2 className="text-xs text-slate-400 mb-2 uppercase font-bold flex items-center gap-2">🧠 Bot AI Log</h2>
@@ -366,7 +412,7 @@ function TradingBot() {
                     {profitLoss >= 0 ? '+' : ''}${profitLoss.toFixed(2)}
                   </span>
                 ) : (
-                  <span className="text-slate-500 text-lg italic">Aguardando Execução...</span>
+                  <span className="text-slate-500 text-lg italic">Aguardando...</span>
                 )}
               </div>
 
@@ -378,11 +424,11 @@ function TradingBot() {
                 )}
                 
                 <button 
-                  onClick={() => handleStopBot('Manual')} 
+                  onClick={() => handleStopBot('Fechamento Manual')} 
                   disabled={isClosingRef.current && activeContractId}
                   className={`w-full text-white font-bold py-4 rounded-lg transition text-sm ${activeContractId ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-600 hover:bg-slate-500'}`}
                 >
-                  {activeContractId ? '🛑 FECHAR OPERAÇÃO NO DEDO' : '🗑️ CANCELAR ANÁLISE'}
+                  {activeContractId ? '🛑 FECHAR OPERAÇÃO (DEDO)' : '🗑️ LIMPAR TELA'}
                 </button>
               </div>
             </div>
