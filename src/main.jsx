@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { TrendingUp, AlertCircle, ChevronRight, Activity, XOctagon } from 'lucide-react';
 
-export default function App() {
+function App() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
@@ -24,9 +24,10 @@ export default function App() {
   const [stopLoss, setStopLoss] = useState('5');
   const [currentPrice, setCurrentPrice] = useState('0.00');
   
-  // Referências para evitar Stale Closures no WebSocket
+  // Refs para evitar Stale Closures no WebSocket
   const tpRef = useRef(takeProfit);
   const slRef = useRef(stopLoss);
+  const candleDataRef = useRef([]); // Blindagem contra crash de array
   
   useEffect(() => { tpRef.current = takeProfit; }, [takeProfit]);
   useEffect(() => { slRef.current = stopLoss; }, [stopLoss]);
@@ -44,18 +45,20 @@ export default function App() {
   const APP_ID = 121512;
 
   // ==========================================
-  // INICIALIZAÇÃO DO GRÁFICO (REQUISITO 3)
+  // INICIALIZAÇÃO DO GRÁFICO
   // ==========================================
   useEffect(() => {
     if (!isConnected || !chartContainerRef.current) return;
 
     const LightweightCharts = window.LightweightCharts;
     if (!LightweightCharts) {
-      setAiMessage('❌ Erro: Biblioteca LightweightCharts não encontrada.');
+      setAiMessage('❌ Erro: Biblioteca LightweightCharts não carregou.');
       return;
     }
 
     const rect = chartContainerRef.current.getBoundingClientRect();
+    
+    // Se o gráfico já existir, limpa antes de recriar
     if (chartRef.current) {
       chartRef.current.remove();
     }
@@ -91,13 +94,17 @@ export default function App() {
         });
       }
     });
+    
     resizeObserver.observe(chartContainerRef.current);
 
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      if (chartRef.current) chartRef.current.remove();
+    };
   }, [isConnected]);
 
   // ==========================================
-  // LÓGICA DE WEBSOCKET & DERIV
+  // WEBSOCKET DERIV
   // ==========================================
   const handleConnect = () => {
     if (!apiToken.trim()) {
@@ -115,76 +122,74 @@ export default function App() {
     };
 
     wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      try {
+        const data = JSON.parse(event.data);
 
-      if (data.error) {
-        setLoginError(data.error.message);
-        setIsLoading(false);
-        return;
-      }
-
-      // 1. Autorização Concluída
-      if (data.msg_type === 'authorize') {
-        setIsConnected(true);
-        setIsLoading(false);
-        setAccountBalance(`${data.authorize.balance} ${data.authorize.currency}`);
-        setAccountType(data.authorize.is_virtual ? 'DEMO' : 'REAL');
-        wsRef.current.send(JSON.stringify({ balance: 1, subscribe: 1 }));
-        loadAssetStream(asset);
-        setAiMessage('Conectado! Busque as entradas usando SMC.');
-      }
-
-      // 2. Atualização de Saldo
-      if (data.msg_type === 'balance') {
-        setAccountBalance(`${data.balance.balance} ${data.balance.currency}`);
-      }
-
-      // 3. Velas Históricas
-      if (data.msg_type === 'candles') {
-        const newCandleData = data.candles.map(c => ({
-          time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close
-        }));
-        setCandleData(newCandleData);
-        if (candleSeriesRef.current) candleSeriesRef.current.setData(newCandleData);
-        if (data.subscription) activeCandleSubRef.current = data.subscription.id;
-      }
-
-      // 4. Tick Atual (Vela viva)
-      if (data.msg_type === 'ohlc') {
-        const c = data.ohlc;
-        const liveCandle = {
-          time: c.open_time,
-          open: parseFloat(c.open),
-          high: parseFloat(c.high),
-          low: parseFloat(c.low),
-          close: parseFloat(c.close),
-        };
-        
-        setCurrentPrice(liveCandle.close.toFixed(5));
-        
-        if (candleSeriesRef.current) {
-          try { candleSeriesRef.current.update(liveCandle); } catch (e) {}
+        if (data.error) {
+          setLoginError(data.error.message);
+          setIsLoading(false);
+          return;
         }
-      }
 
-      // 5. Confirmação de Ordem (Buy)
-      if (data.msg_type === 'buy') {
-        const contractId = data.buy.contract_id;
-        setActiveContractId(contractId);
-        setAiMessage(`✅ Ordem aberta! Acompanhando PnL ao vivo...`);
-        
-        // Pede para se inscrever no lucro/perda real (REQUISITO 4)
-        wsRef.current.send(JSON.stringify({
-          proposal_open_contract: 1,
-          contract_id: contractId,
-          subscribe: 1
-        }));
-      }
+        if (data.msg_type === 'authorize') {
+          setIsConnected(true);
+          setIsLoading(false);
+          setAccountBalance(`${data.authorize.balance} ${data.authorize.currency}`);
+          setAccountType(data.authorize.is_virtual ? 'DEMO' : 'REAL');
+          wsRef.current.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+          loadAssetStream(asset);
+          setAiMessage('Conectado! Busque as entradas usando SMC.');
+        }
 
-      // 6. Atualização ao vivo do Contrato (PnL)
-      if (data.msg_type === 'proposal_open_contract') {
-        const contract = data.proposal_open_contract;
-        if (contract) {
+        if (data.msg_type === 'balance') {
+          setAccountBalance(`${data.balance.balance} ${data.balance.currency}`);
+        }
+
+        if (data.msg_type === 'candles') {
+          const newCandleData = data.candles.map(c => ({
+            time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close
+          }));
+          setCandleData(newCandleData);
+          candleDataRef.current = newCandleData; // Atualiza a Ref para a lógica SMC
+
+          if (candleSeriesRef.current) {
+            candleSeriesRef.current.setData(newCandleData);
+          }
+          if (data.subscription) activeCandleSubRef.current = data.subscription.id;
+        }
+
+        if (data.msg_type === 'ohlc' && data.ohlc) {
+          const c = data.ohlc;
+          const liveCandle = {
+            time: c.open_time,
+            open: parseFloat(c.open),
+            high: parseFloat(c.high),
+            low: parseFloat(c.low),
+            close: parseFloat(c.close),
+          };
+          
+          setCurrentPrice(liveCandle.close.toFixed(5));
+          
+          if (candleSeriesRef.current) {
+            try { candleSeriesRef.current.update(liveCandle); } catch (e) {}
+          }
+        }
+
+        if (data.msg_type === 'buy') {
+          const contractId = data.buy.contract_id;
+          setActiveContractId(contractId);
+          setAiMessage(`✅ Ordem aberta! Acompanhando PnL ao vivo...`);
+          
+          wsRef.current.send(JSON.stringify({
+            proposal_open_contract: 1,
+            contract_id: contractId,
+            subscribe: 1
+          }));
+        }
+
+        if (data.msg_type === 'proposal_open_contract' && data.proposal_open_contract) {
+          const contract = data.proposal_open_contract;
+          
           if (contract.is_sold) {
             setActiveContractId(null);
             setRealPnL(0);
@@ -196,7 +201,6 @@ export default function App() {
           const currentProfit = parseFloat(contract.profit);
           setRealPnL(currentProfit);
 
-          // Checagem de TP e SL Automática
           const tp = parseFloat(tpRef.current);
           const sl = parseFloat(slRef.current);
 
@@ -208,6 +212,8 @@ export default function App() {
             closeActiveContract(contract.contract_id);
           }
         }
+      } catch (err) {
+        console.error("Erro ao processar mensagem do WebSocket", err);
       }
     };
 
@@ -242,39 +248,45 @@ export default function App() {
   // LÓGICA SMART MONEY CONCEPTS (SMC)
   // ==========================================
   const handleAnalyze = () => {
-    if (candleData.length < 50) {
-      setAiMessage('❌ Dados insuficientes para análise SMC.');
+    const currentData = candleDataRef.current; // Usa a Ref para garantir que há dados
+
+    if (!currentData || currentData.length < 50) {
+      setAiMessage('❌ Dados insuficientes. Aguarde o gráfico carregar.');
       return;
     }
+
     setAiMessage('Analisando Order Blocks (OB) e Máximas/Mínimas (BOS)...');
     
     setTimeout(() => {
-      const highs = candleData.slice(-50).map(c => c.high);
-      const lows = candleData.slice(-50).map(c => c.low);
-      const currentPriceNum = candleData[candleData.length - 1].close;
+      try {
+        const highs = currentData.slice(-50).map(c => c.high);
+        const lows = currentData.slice(-50).map(c => c.low);
+        const currentPriceNum = currentData[currentData.length - 1].close;
 
-      const maxPrice = Math.max(...highs);
-      const minPrice = Math.min(...lows);
-      const midPoint = (maxPrice + minPrice) / 2;
+        const maxPrice = Math.max(...highs);
+        const minPrice = Math.min(...lows);
+        const midPoint = (maxPrice + minPrice) / 2;
 
-      // Limpar e criar linhas
-      if (candleSeriesRef.current) {
-        priceLineRef.current.forEach(line => {
-          try { candleSeriesRef.current.removePriceLine(line); } catch (e) {}
-        });
-        const resLine = candleSeriesRef.current.createPriceLine({ price: maxPrice, color: '#ef4444', lineStyle: 2, title: 'OB Res' });
-        const supLine = candleSeriesRef.current.createPriceLine({ price: minPrice, color: '#10b981', lineStyle: 2, title: 'OB Sup' });
-        priceLineRef.current = [resLine, supLine];
+        if (candleSeriesRef.current) {
+          priceLineRef.current.forEach(line => {
+            try { candleSeriesRef.current.removePriceLine(line); } catch (e) {}
+          });
+          const resLine = candleSeriesRef.current.createPriceLine({ price: maxPrice, color: '#ef4444', lineStyle: 2, title: 'OB Res' });
+          const supLine = candleSeriesRef.current.createPriceLine({ price: minPrice, color: '#10b981', lineStyle: 2, title: 'OB Sup' });
+          priceLineRef.current = [resLine, supLine];
+        }
+
+        const isCall = currentPriceNum < midPoint;
+        setSignal({ type: isCall ? 'CALL' : 'PUT', entry: currentPriceNum });
+        setAiMessage(`✅ Sinal ${isCall ? 'CALL (Alta)' : 'PUT (Baixa)'} gerado! Preço perto do Order Block.`);
+      } catch (err) {
+        setAiMessage('❌ Erro matemático na análise. Tente novamente.');
       }
-
-      const isCall = currentPriceNum < midPoint;
-      setSignal({ type: isCall ? 'CALL' : 'PUT', entry: currentPriceNum });
-      setAiMessage(`✅ Sinal ${isCall ? 'CALL (Alta)' : 'PUT (Baixa)'} gerado! Preço perto do Order Block de ${isCall ? 'Suporte' : 'Resistência'}.`);
-    }, 800);
+    }, 500);
   };
 
   // ==========================================
-  // AÇÕES DE EXECUÇÃO DE ORDEM
+  // EXECUÇÃO
   // ==========================================
   const handleExecuteTrade = () => {
     if (!signal || !wsRef.current) return;
@@ -299,7 +311,7 @@ export default function App() {
   };
 
   // ==========================================
-  // UI DO LOGIN
+  // RENDERIZAÇÃO
   // ==========================================
   if (!isConnected) {
     return (
@@ -336,12 +348,8 @@ export default function App() {
     );
   }
 
-  // ==========================================
-  // UI DO BOT DE TRADING
-  // ==========================================
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="bg-slate-800/80 border-b border-slate-700 p-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -355,7 +363,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Controles de Configuração */}
       <div className="bg-slate-800/40 border-b border-slate-700 p-4">
         <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
           <div className="flex flex-col">
@@ -393,7 +400,6 @@ export default function App() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         
-        {/* Container do Gráfico: OBRIGATÓRIO ESTILOS INLINE COMO SOLICITADO */}
         <section className="lg:col-span-2 bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden relative shadow-xl">
           <div className="absolute top-4 left-4 z-10 bg-slate-900/80 border border-slate-700 px-3 py-1.5 rounded-lg flex gap-4 text-xs font-mono">
             <span className="text-white font-bold">{asset}</span>
@@ -406,9 +412,7 @@ export default function App() {
           />
         </section>
 
-        {/* Sidebar Execução */}
         <section className="lg:col-span-1 flex flex-col gap-4">
-          {/* Mensagens IA */}
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-700">
               <TrendingUp className="w-4 h-4 text-blue-400"/>
@@ -417,7 +421,6 @@ export default function App() {
             <p className="text-sm text-slate-300 font-mono">{aiMessage}</p>
           </div>
 
-          {/* Painel de Trading ou Operação em Andamento */}
           {activeContractId ? (
              <div className="bg-slate-800 border-2 border-blue-500/50 rounded-xl p-5 shadow-[0_0_20px_rgba(59,130,246,0.15)] flex flex-col items-center">
                 <h3 className="text-sm text-slate-400 uppercase mb-2 font-bold animate-pulse">Contrato Ativo</h3>
@@ -450,9 +453,11 @@ export default function App() {
   );
 }
 
-// Injeção Estática na Raiz (Garante arquitetura sem arquivos extras)
+// Injeção de raiz segura para evitar "crash" duplo no Vite HMR
 const rootElement = document.getElementById('root');
 if (rootElement) {
-  const root = createRoot(rootElement);
-  root.render(<App />);
+  if (!window.__REACT_ROOT__) {
+    window.__REACT_ROOT__ = createRoot(rootElement);
+  }
+  window.__REACT_ROOT__.render(<App />);
 }
