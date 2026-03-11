@@ -5,19 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SMC Trading Bot</title>
     
-    <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      tailwind.config = {
-        darkMode: 'class',
-      }
+      tailwind.config = { darkMode: 'class' }
     </script>
-
-    <!-- TradingView Lightweight Charts (Sem async para carregar antes do React) -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body class="dark bg-[#0f172a] text-slate-200 antialiased overflow-x-hidden">
     <div id="root"></div>
-    <script type="module" src="/src/App.jsx"></script>
+    <!-- Alterado para main.jsx -->
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
