@@ -1,2 +1,0 @@
-# Master-bot-
-Análise groq
