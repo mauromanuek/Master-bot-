@@ -1,22 +1,23 @@
-<!doctype html>
-<html lang="pt-BR" class="dark">
+<!DOCTYPE html>
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SMC Trading Bot</title>
-    <!-- TradingView Lightweight Charts -->
-    <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js" async></script>
-    <!-- Tailwind CSS (via CDN para facilitar) -->
+    
+    <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      tailwind.config = { darkMode: 'class' }
+      tailwind.config = {
+        darkMode: 'class',
+      }
     </script>
-    <style>
-      body { background-color: #0f172a; color: white; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-    </style>
+
+    <!-- TradingView Lightweight Charts (Sem async para carregar antes do React) -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
   </head>
-  <body>
+  <body class="dark bg-[#0f172a] text-slate-200 antialiased overflow-x-hidden">
     <div id="root"></div>
-    <script type="module" src="/App.jsx"></script>
+    <script type="module" src="/src/App.jsx"></script>
   </body>
 </html>
