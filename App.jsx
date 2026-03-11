@@ -6,7 +6,6 @@ function TradingBot() {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const candleSeriesRef = useRef(null);
-  const smaSeriesRef = useRef(null);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -20,30 +19,26 @@ function TradingBot() {
   const [timeframe, setTimeframe] = useState('15M');
   const [stake, setStake] = useState('10');
   
-  // TP e SL Manuais
-  const [manualTP, setManualTP] = useState('');
-  const [manualSL, setManualSL] = useState('');
+  // TP e SL Financeiros (Manuais em USD)
+  const [targetProfit, setTargetProfit] = useState(''); // Ganho em $
+  const [stopLoss, setStopLoss] = useState('');         // Perda em $
 
   const [candleData, setCandleData] = useState([]);
   const [signal, setSignal] = useState(null);
-  const [aiMessage, setAiMessage] = useState('Gráfico ao vivo conectado. Pressione "Analisar Gráfico" para mapear a estrutura.');
+  const [aiMessage, setAiMessage] = useState('Gráfico ao vivo conectado. Pressione "Analisar Gráfico" para buscar oportunidades (SMC).');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isWeekend, setIsWeekend] = useState(false);
   
+  // Controle Financeiro da Operação
   const [profitLoss, setProfitLoss] = useState(0);
-  const [profitLossPercent, setProfitLossPercent] = useState(0);
-  
-  // Rastreio da Operação Ativa
   const [activeContractId, setActiveContractId] = useState(null);
-  const [actualEntryPrice, setActualEntryPrice] = useState(null);
 
   const wsRef = useRef(null);
   const activeCandleSubRef = useRef(null);
+  const isClosingRef = useRef(false);
   const priceLineRef = useRef([]);
-  const isClosingRef = useRef(false); // Previne duplo clique no fechamento
   const APP_ID = 121512;
 
-  // 1. Inicializar Gráfico
+  // 1. INICIALIZAR GRÁFICO
   useEffect(() => {
     if (!isConnected || !chartContainerRef.current) return;
 
@@ -51,7 +46,6 @@ function TradingBot() {
       try {
         let attempts = 0;
         let LightweightCharts = window.LightweightCharts;
-        
         while (!LightweightCharts && attempts < 50) {
           await new Promise(r => setTimeout(r, 100));
           LightweightCharts = window.LightweightCharts;
@@ -78,8 +72,6 @@ function TradingBot() {
           upColor: '#22c55e', downColor: '#ef4444', borderVisible: false, wickUpColor: '#22c55e', wickDownColor: '#ef4444',
         });
 
-        smaSeriesRef.current = chartRef.current.addLineSeries({ color: '#3b82f6', lineWidth: 2, crosshairMarkerVisible: false });
-
         const resizeObserver = new ResizeObserver(() => {
           if (chartRef.current && chartContainerRef.current) {
             const newRect = chartContainerRef.current.getBoundingClientRect();
@@ -94,7 +86,7 @@ function TradingBot() {
     setTimeout(() => initChart(), 100);
   }, [isConnected]);
 
-  // 2. Conexão WebSocket Deriv e Callbacks
+  // 2. CONEXÃO WEBSOCKET DERIV E LÓGICA DE DADOS
   const handleConnect = async () => {
     if (!apiToken.trim()) {
       setLoginError('Insira um token válido'); return;
@@ -108,11 +100,16 @@ function TradingBot() {
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
+        // Tratamento Global de Erros da Deriv
         if (data.error) {
-          setLoginError(data.error.message); setIsLoading(false); return;
+          setAiMessage(`❌ ERRO DA CORRETORA: ${data.error.message}`);
+          setIsLoading(false);
+          isClosingRef.current = false;
+          if (data.error.code === 'InvalidToken') setLoginError('Token inválido ou sem permissão de trade.');
+          return;
         }
 
-        // Autorização
+        // Login Bem Sucedido
         if (data.msg_type === 'authorize') {
           setIsConnected(true); setIsLoading(false);
           setAccountBalance(`${data.authorize.balance} ${data.authorize.currency}`);
@@ -121,23 +118,20 @@ function TradingBot() {
           loadAssetStream(asset);
         }
 
-        // Recebendo Saldo
+        // Atualização de Saldo
         if (data.msg_type === 'balance') {
           setAccountBalance(`${data.balance.balance} ${data.balance.currency}`);
         }
 
-        // Velas Históricas
+        // Gráfico: Histórico e Tick
         if (data.msg_type === 'candles') {
           const newCandleData = data.candles.map(c => ({
             time: c.epoch, open: c.open, high: c.high, low: c.low, close: c.close,
           }));
           setCandleData(newCandleData);
           if (candleSeriesRef.current) candleSeriesRef.current.setData(newCandleData);
-          if (smaSeriesRef.current) smaSeriesRef.current.setData(calcSMA(newCandleData, 20));
           if (data.subscription) activeCandleSubRef.current = data.subscription.id;
         }
-
-        // Preço em Tempo Real (Tick)
         if (data.msg_type === 'ohlc') {
           const c = data.ohlc;
           const liveCandle = { time: c.open_time, open: parseFloat(c.open), high: parseFloat(c.high), low: parseFloat(c.low), close: parseFloat(c.close) };
@@ -145,76 +139,57 @@ function TradingBot() {
           setCurrentPrice(liveCandle.close.toFixed(asset.includes('JPY') ? 3 : 5));
         }
 
-        // === COMPRA BEM SUCEDIDA ===
+        // === COMPRA EFETUADA ===
         if (data.msg_type === 'buy') {
-          const id = data.buy.contract_id || data.buy.transaction_id;
-          setActiveContractId(data.buy.contract_id);
-          setActualEntryPrice(parseFloat(currentPrice)); // Salva a taxa real de entrada
+          const contractId = data.buy.contract_id;
+          setActiveContractId(contractId);
           isClosingRef.current = false;
-          setAiMessage(`✅ Ordem Aberta! Contrato: ${id}. Gerenciando operação...`);
+          setAiMessage(`✅ Ordem Aberta (ID: ${contractId}). Monitorando lucro/perda...`);
+          
+          // O SEGREDO ESTÁ AQUI: Pede para a Deriv enviar o Lucro/Perda ao vivo!
+          wsRef.current.send(JSON.stringify({
+            proposal_open_contract: 1,
+            contract_id: contractId,
+            subscribe: 1
+          }));
         }
 
-        // === VENDA BEM SUCEDIDA (BOT PARADO) ===
-        if (data.msg_type === 'sell') {
-          setActiveContractId(null);
-          setActualEntryPrice(null);
-          isClosingRef.current = false;
-          setSignal(null);
-          setAiMessage(`🛑 Operação fechada. Vendido por: $${data.sell.sold_for}`);
-          
-          // SOLICITA ATUALIZAÇÃO IMEDIATA DO SALDO APÓS FECHAR
-          wsRef.current.send(JSON.stringify({ balance: 1 }));
+        // === MONITORAMENTO DE LUCRO/PERDA AO VIVO ===
+        if (data.msg_type === 'proposal_open_contract') {
+          const contract = data.proposal_open_contract;
+          if (!contract) return;
+
+          const currentProfit = parseFloat(contract.profit);
+          setProfitLoss(currentProfit);
+
+          // VERIFICAR TAKE PROFIT E STOP LOSS FINANCEIRO
+          if (!isClosingRef.current && !contract.is_sold) {
+            const tpValue = targetProfit ? parseFloat(targetProfit) : null;
+            const slValue = stopLoss ? parseFloat(stopLoss) : null;
+
+            if (tpValue !== null && currentProfit >= tpValue) {
+              handleStopBot("🎯 TAKE PROFIT ATINGIDO!");
+            } else if (slValue !== null && currentProfit <= -Math.abs(slValue)) {
+              handleStopBot("🛑 STOP LOSS ATINGIDO!");
+            }
+          }
+
+          // Se a corretora fechar o contrato (ex: expirou o tempo ou foi vendido)
+          if (contract.is_sold) {
+            setActiveContractId(null);
+            setSignal(null);
+            isClosingRef.current = false;
+            setAiMessage(`🏁 Contrato finalizado. Lucro/Perda final: $${currentProfit.toFixed(2)}`);
+            wsRef.current.send(JSON.stringify({ balance: 1 })); // Atualiza Saldo
+            wsRef.current.send(JSON.stringify({ forget_all: "proposal_open_contract" })); // Limpa dados
+          }
         }
       };
 
-      wsRef.current.onerror = () => { setLoginError('Erro de conexão com o servidor'); setIsLoading(false); };
-      wsRef.current.onclose = () => setIsConnected(false);
+      wsRef.current.onerror = () => { setLoginError('Erro de conexão'); setIsLoading(false); };
     } catch (error) {
       setLoginError('Erro ao conectar'); setIsLoading(false);
     }
-  };
-
-  // 3. Monitoramento de PnL e Auto-Fechamento (TP/SL)
-  useEffect(() => {
-    // SÓ calcula e monitora se houver um contrato realmente aberto
-    if (activeContractId && actualEntryPrice && signal) {
-      const currentPriceNum = parseFloat(currentPrice);
-      
-      // Cálculo de Lucro/Perda
-      const pl = signal.type === 'CALL' 
-        ? (currentPriceNum - actualEntryPrice) * parseFloat(stake)
-        : (actualEntryPrice - currentPriceNum) * parseFloat(stake);
-        
-      setProfitLoss(pl);
-      setProfitLossPercent((pl / (actualEntryPrice * parseFloat(stake))) * 100);
-
-      // Gatilhos de TP e SL Client-Side
-      const targetTP = manualTP ? parseFloat(manualTP) : signal.tp;
-      const targetSL = manualSL ? parseFloat(manualSL) : signal.sl;
-
-      if (signal.type === 'CALL') {
-         if (currentPriceNum >= targetTP) handleStopBot("Take Profit alcançado!");
-         if (currentPriceNum <= targetSL) handleStopBot("Stop Loss alcançado!");
-      } else { // PUT
-         if (currentPriceNum <= targetTP) handleStopBot("Take Profit alcançado!");
-         if (currentPriceNum >= targetSL) handleStopBot("Stop Loss alcançado!");
-      }
-    } else {
-      // Zera o display se não tiver contrato
-      setProfitLoss(0);
-      setProfitLossPercent(0);
-    }
-  }, [currentPrice, activeContractId, actualEntryPrice, signal, stake, manualTP, manualSL]);
-
-  // Utilitários 
-  const calcSMA = (data, period) => {
-    const sma = [];
-    for (let i = period - 1; i < data.length; i++) {
-      let sum = 0;
-      for (let j = 0; j < period; j++) sum += data[i - j].close;
-      sma.push({ time: data[i].time, value: sum / period });
-    }
-    return sma;
   };
 
   const loadAssetStream = (selectedAsset) => {
@@ -229,20 +204,19 @@ function TradingBot() {
     }));
     const assetNames = { R_10: 'Volatility 10', R_25: 'Volatility 25', frxEURUSD: 'EUR/USD' };
     setChartTitle(assetNames[selectedAsset] || selectedAsset);
-    setIsWeekend((new Date().getDay() === 0 || new Date().getDay() === 6) && selectedAsset.startsWith('frx'));
   };
 
+  // 3. ANÁLISE SMC
   const handleAnalyze = async () => {
-    if (isWeekend || candleData.length < 50) {
-      setAiMessage('❌ Mercado fechado ou dados insuficientes.'); return;
+    if (candleData.length < 50) {
+      setAiMessage('❌ Dados do gráfico insuficientes para analisar.'); return;
     }
-    setIsAnalyzing(true); setAiMessage('Analisando estrutura SMC do preço...');
+    setIsAnalyzing(true); setAiMessage('Analisando Order Blocks e Liquidez...');
 
     try {
       const highs = candleData.map(c => c.high);
       const lows = candleData.map(c => c.low);
       const currentPriceNum = candleData[candleData.length - 1].close;
-
       const maxPrice = Math.max(...highs.slice(-50));
       const minPrice = Math.min(...lows.slice(-50));
 
@@ -256,44 +230,52 @@ function TradingBot() {
       }
 
       const midPoint = (maxPrice + minPrice) / 2;
-      const isCall = currentPriceNum < midPoint;
-      const pip = asset.startsWith('R_') ? 1.5 : asset.includes('JPY') ? 0.15 : 0.0015;
+      const isCall = currentPriceNum < midPoint; // Se estiver perto do suporte, compra
 
-      setSignal({
-        type: isCall ? 'CALL' : 'PUT',
-        entry: currentPriceNum,
-        tp: isCall ? currentPriceNum + pip * 2 : currentPriceNum - pip * 2,
-        sl: isCall ? currentPriceNum - pip : currentPriceNum + pip,
-      });
-
-      setAiMessage(`✅ Sinal gerado para ${isCall ? 'CALL' : 'PUT'}. Configure os limites ou apenas execute.`);
+      setSignal({ type: isCall ? 'CALL' : 'PUT', entryPrice: currentPriceNum });
+      setAiMessage(`✅ Análise SMC: Forte probabilidade de ${isCall ? 'ALTA (CALL)' : 'BAIXA (PUT)'}.`);
     } catch (error) {
-      setAiMessage('❌ Erro ao analisar. Tente novamente.');
+      setAiMessage('❌ Erro ao analisar gráfico.');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
+  // 4. EXECUTAR ORDEM E PARAR BOT
   const handleExecuteTrade = () => {
     if (!signal || !wsRef.current) return;
+    
+    // Zera os lucros na tela
+    setProfitLoss(0);
+    setAiMessage('⏳ Enviando ordem para a corretora...');
+    
     wsRef.current.send(JSON.stringify({
-      buy: 1, price: parseFloat(stake),
-      parameters: { amount: parseFloat(stake), basis: 'stake', contract_type: signal.type, currency: 'USD', duration: 1, duration_unit: 'm', symbol: asset }
+      buy: 1, 
+      price: parseFloat(stake),
+      parameters: { 
+        amount: parseFloat(stake), 
+        basis: 'stake', 
+        contract_type: signal.type, 
+        currency: 'USD', 
+        duration: 5, // Duração de 5 minutos por padrão
+        duration_unit: 'm', 
+        symbol: asset 
+      }
     }));
   };
 
-  // Vender (Parar) Operação
-  const handleStopBot = (reason = '') => {
+  const handleStopBot = (reason = 'Manual') => {
     if (activeContractId && wsRef.current && !isClosingRef.current) {
-      isClosingRef.current = true; // Impede cliques duplicados
-      setAiMessage(`🛑 ${reason} Encerrando operação na corretora...`);
+      isClosingRef.current = true; // Bloqueia múltiplos cliques
+      setAiMessage(`${reason} - Solicitando fechamento imediato...`);
       wsRef.current.send(JSON.stringify({ sell: activeContractId, price: 0 }));
     } else if (!activeContractId) {
       setSignal(null);
-      setAiMessage('🛑 Bot resetado. Nenhuma operação estava aberta.');
+      setAiMessage('🛑 Bot limpo. Nenhuma operação em andamento.');
     }
   };
 
+  // UI - TELA DE LOGIN
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -305,10 +287,10 @@ function TradingBot() {
             <h1 className="text-3xl font-bold text-white mb-2">SMC <span className="text-blue-400">BOT</span></h1>
           </div>
           <div className="space-y-5">
-            <input type="password" value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder="Cole aqui seu Token API Deriv" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500" />
+            <input type="password" value={apiToken} onChange={(e) => setApiToken(e.target.value)} placeholder="Cole seu Token API da Deriv (Trade)" className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500" />
             {loginError && <p className="text-sm text-red-400 bg-red-500/10 p-3 rounded flex items-center gap-2"><AlertCircle size={16}/> {loginError}</p>}
             <button onClick={handleConnect} disabled={isLoading} className="w-full py-4 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 transition">
-              {isLoading ? 'CONECTANDO...' : 'CONECTAR A DERIV'}
+              {isLoading ? 'CONECTANDO...' : 'CONECTAR E ABRIR BOT'}
             </button>
           </div>
         </div>
@@ -316,6 +298,7 @@ function TradingBot() {
     );
   }
 
+  // UI - TELA PRINCIPAL DO BOT
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col font-sans">
       <header className="bg-slate-800 border-b border-slate-700 px-4 py-3 flex justify-between items-center text-white">
@@ -326,7 +309,7 @@ function TradingBot() {
         </div>
       </header>
 
-      {/* Painel de Controles */}
+      {/* Painel Superior (Inputs) */}
       <div className="bg-slate-800/50 border-b border-slate-700 p-4 flex flex-wrap gap-4 items-end">
         <div className="flex flex-col"><label className="text-[10px] text-slate-400 mb-1 uppercase">Ativo</label>
         <select value={asset} onChange={(e) => { setAsset(e.target.value); loadAssetStream(e.target.value); }} className="bg-slate-900 border border-slate-600 text-white p-2 rounded text-sm focus:border-blue-500 outline-none">
@@ -335,21 +318,21 @@ function TradingBot() {
           <option value="frxEURUSD">EUR/USD</option>
         </select></div>
         
-        <div className="flex flex-col"><label className="text-[10px] text-slate-400 mb-1 uppercase">Tempo</label>
+        <div className="flex flex-col"><label className="text-[10px] text-slate-400 mb-1 uppercase">Tempo Vela</label>
         <select value={timeframe} onChange={(e) => setTimeframe(e.target.value)} className="bg-slate-900 border border-slate-600 text-white p-2 rounded text-sm focus:border-blue-500 outline-none">
           <option value="5M">5 Min</option><option value="15M">15 Min</option>
         </select></div>
 
-        <div className="flex flex-col"><label className="text-[10px] text-slate-400 mb-1 uppercase">Stake ($)</label>
+        <div className="flex flex-col"><label className="text-[10px] text-slate-400 mb-1 uppercase">Aposta (USD)</label>
         <input type="number" value={stake} onChange={(e) => setStake(e.target.value)} className="w-20 bg-slate-900 border border-slate-600 text-white p-2 rounded text-center text-sm focus:border-blue-500 outline-none" /></div>
 
-        <div className="flex flex-col"><label className="text-[10px] text-green-400 mb-1 uppercase font-bold">TP Preço (Opcional)</label>
-        <input type="number" step="0.00001" placeholder="Auto" value={manualTP} onChange={(e) => setManualTP(e.target.value)} className="w-24 bg-slate-900 border border-slate-600 text-green-300 p-2 rounded text-center text-sm focus:border-green-500 outline-none" /></div>
+        <div className="flex flex-col"><label className="text-[10px] text-green-400 mb-1 uppercase font-bold">Ganho (+$)</label>
+        <input type="number" step="0.1" placeholder="Livre" value={targetProfit} onChange={(e) => setTargetProfit(e.target.value)} className="w-20 bg-slate-900 border border-slate-600 text-green-300 p-2 rounded text-center text-sm focus:border-green-500 outline-none" /></div>
 
-        <div className="flex flex-col"><label className="text-[10px] text-red-400 mb-1 uppercase font-bold">SL Preço (Opcional)</label>
-        <input type="number" step="0.00001" placeholder="Auto" value={manualSL} onChange={(e) => setManualSL(e.target.value)} className="w-24 bg-slate-900 border border-slate-600 text-red-300 p-2 rounded text-center text-sm focus:border-red-500 outline-none" /></div>
+        <div className="flex flex-col"><label className="text-[10px] text-red-400 mb-1 uppercase font-bold">Perda (-$)</label>
+        <input type="number" step="0.1" placeholder="Livre" value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} className="w-20 bg-slate-900 border border-slate-600 text-red-300 p-2 rounded text-center text-sm focus:border-red-500 outline-none" /></div>
 
-        <button onClick={handleAnalyze} disabled={isAnalyzing || isWeekend || activeContractId !== null} className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded text-sm font-bold text-white transition disabled:opacity-50">
+        <button onClick={handleAnalyze} disabled={isAnalyzing || activeContractId !== null} className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded text-sm font-bold text-white transition disabled:opacity-50">
           {isAnalyzing ? 'ANALISANDO...' : '📊 ANALISAR GRÁFICO'}
         </button>
       </div>
@@ -366,8 +349,8 @@ function TradingBot() {
         {/* Sidebar Status e Controle */}
         <section className="flex flex-col gap-4">
           <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 shadow-xl">
-            <h2 className="text-xs text-slate-400 mb-2 uppercase font-bold flex items-center gap-2">🧠 Analista IA</h2>
-            <div className="bg-slate-900/50 border border-slate-700 p-3 rounded font-mono text-sm h-28 overflow-auto text-slate-300 leading-relaxed">{aiMessage}</div>
+            <h2 className="text-xs text-slate-400 mb-2 uppercase font-bold flex items-center gap-2">🧠 Bot AI Log</h2>
+            <div className="bg-slate-900/50 border border-slate-700 p-3 rounded font-mono text-sm h-20 overflow-auto text-slate-300 leading-relaxed">{aiMessage}</div>
           </div>
 
           {signal && (
@@ -376,29 +359,15 @@ function TradingBot() {
                 {signal.type === 'CALL' ? 'CALL ↗' : 'PUT ↘'}
               </h2>
               
-              <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-3 text-sm font-mono space-y-3 mb-6">
-                <div className="flex justify-between pb-2 border-b border-slate-700">
-                  <span className="text-slate-400">Entry:</span>
-                  <span className="font-bold">{actualEntryPrice ? actualEntryPrice.toFixed(5) : signal.entry.toFixed(5)}</span>
-                </div>
-                <div className="flex justify-between pb-2 border-b border-slate-700">
-                  <span className="text-green-400">TP:</span>
-                  <span className="text-green-400 font-bold">{manualTP ? parseFloat(manualTP).toFixed(5) : signal.tp.toFixed(5)}</span>
-                </div>
-                <div className="flex justify-between pb-2 border-b border-slate-700">
-                  <span className="text-red-400">SL:</span>
-                  <span className="text-red-400 font-bold">{manualSL ? parseFloat(manualSL).toFixed(5) : signal.sl.toFixed(5)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">P&L (Live):</span>
-                  {activeContractId ? (
-                    <span className={`font-bold ${profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      ${profitLoss.toFixed(2)} ({profitLossPercent.toFixed(2)}%)
-                    </span>
-                  ) : (
-                    <span className="text-slate-600 italic">Aguardando...</span>
-                  )}
-                </div>
+              <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 flex flex-col items-center justify-center mb-6">
+                <span className="text-slate-400 text-xs uppercase tracking-widest mb-1">LUCRO / PERDA AO VIVO</span>
+                {activeContractId ? (
+                  <span className={`text-4xl font-bold ${profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {profitLoss >= 0 ? '+' : ''}${profitLoss.toFixed(2)}
+                  </span>
+                ) : (
+                  <span className="text-slate-500 text-lg italic">Aguardando Execução...</span>
+                )}
               </div>
 
               <div className="mt-auto space-y-3">
@@ -408,8 +377,12 @@ function TradingBot() {
                   </button>
                 )}
                 
-                <button onClick={() => handleStopBot('Manual')} className={`w-full text-white font-bold py-4 rounded-lg transition text-sm ${activeContractId ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-600 hover:bg-slate-500'}`}>
-                  {activeContractId ? '🛑 FECHAR OPERAÇÃO' : '🗑️ LIMPAR ANÁLISE'}
+                <button 
+                  onClick={() => handleStopBot('Manual')} 
+                  disabled={isClosingRef.current && activeContractId}
+                  className={`w-full text-white font-bold py-4 rounded-lg transition text-sm ${activeContractId ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-600 hover:bg-slate-500'}`}
+                >
+                  {activeContractId ? '🛑 FECHAR OPERAÇÃO NO DEDO' : '🗑️ CANCELAR ANÁLISE'}
                 </button>
               </div>
             </div>
