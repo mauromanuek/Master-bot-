@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Placa Curiosa JS - Turbo Extreme</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-body: #050d1a; --bg-panel: #0b1a31; --bg-header: #020e1e;
+            --cyan: #00d2ff; --green: #2ecc71; --red: #e74c3c;
+            --text-muted: #8b9bb4; --border: #1e3557; --yellow: #f1c40f;
+            --blue-tick: #3b5998; --red-tick: #fa3e3e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: var(--bg-body); color: white; display: flex; flex-direction: column; overflow-x: hidden; min-height: 100vh; }
+
+        /* LOGIN SCREEN */
+        #login-screen { position: fixed; inset: 0; background: var(--bg-body); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .login-box { background: var(--bg-panel); padding: 30px; border-radius: 12px; width: 90%; max-width: 380px; text-align: center; border: 1px solid var(--border); }
+        .login-box h1 { font-size: 22px; margin-bottom: 20px; color: var(--cyan); }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid var(--border); background: #050d1a; color: white; outline: none; }
+        .login-box button { width: 100%; padding: 12px; background: var(--cyan); border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: #050d1a; }
+
+        /* HEADER */
+        header { background: var(--bg-header); padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; }
+        .logo-container { display: flex; flex-direction: column; }
+        .logo-main { font-weight: 900; font-size: 20px; letter-spacing: 1px; }
+        .logo-sub { font-size: 9px; color: var(--text-muted); letter-spacing: 2px; }
+        .menu-btn { color: var(--cyan); font-weight: bold; font-size: 14px; cursor: pointer; }
+
+        #dashboard-screen { padding: 15px; max-width: 500px; margin: 0 auto; width: 100%; display: none; }
+
+        /* BALANCE PANEL */
+        .balance-grid { display: grid; grid-template-columns: 1.5fr 1fr; background: var(--bg-panel); border-radius: 4px; overflow: hidden; margin-bottom: 10px; border: 1px solid var(--border); }
+        .bal-box { padding: 12px; }
+        .bal-label { font-size: 11px; color: var(--text-muted); font-weight: bold; margin-bottom: 5px; }
+        .bal-value { font-size: 22px; font-weight: 800; }
+        .trades-row { background: #081221; padding: 5px 12px; font-size: 11px; text-align: right; color: var(--text-muted); grid-column: span 2; border-top: 1px solid var(--border); }
+
+        /* SELECTORS */
+        .selector-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .custom-select { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; position: relative; }
+        .custom-select label { font-size: 10px; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: bold; }
+        .select-inner { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; }
+        .custom-select select { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+
+        .btn-video { background: #d63031; color: white; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; border: none; width: 100%; cursor: pointer; font-size: 18px; }
+
+        /* CHART PANEL */
+        .digits-panel { background: #0b1a31; border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #162a47; }
+        .digits-header { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 15px; }
+        
+        .bar-chart { display: flex; justify-content: space-between; align-items: flex-end; height: 100px; padding-top: 20px; }
+        .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; } /* Added cursor:pointer for clickability */
+        .bar-col.selected-differ { border: 2px solid var(--yellow); border-radius: 4px; padding: 2px; } /* New style for selected digit */
+        .bar-pct { font-size: 9px; font-weight: bold; color: white; transition: 0.3s; }
+        .bar-pct.high { color: var(--green); }
+        .bar-fill-bg { width: 70%; height: 60px; background: #162a47; position: relative; display: flex; align-items: flex-end; }
+        .bar-fill { width: 100%; height: 0%; transition: 0.3s; background: #636e72; }
+        .bar-fill.high { background: var(--green); }
+        .bar-fill.zero { background: var(--red); height: 2px !important; }
+        .bar-num { font-size: 10px; font-weight: bold; margin-top: 2px; }
+
+        /* LISTA DE DÍGITOS (ESTILO BALLS) */
+        #recent-ticks-list { display: flex; justify-content: center; gap: 6px; margin-top: 15px; padding-top: 10px; border-top: 1px solid #162a47; overflow-x: auto; min-height: 40px; }
+        .tick-ball { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: white; flex-shrink: 0; animation: fadeIn 0.3s ease-in; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .tick-blue { background-color: var(--blue-tick); }
+        .tick-red { background-color: var(--red-tick); }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
+
+        #tick-chart-box { display: none; height: 100px; width: 100%; position: relative; }
+        canvas { width: 100%; height: 100%; }
+
+        /* CONTROLS & STEPPER */
+        .controls-line { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; }
+        .btn-round { width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-panel); border: 1px solid var(--border); color: white; cursor: pointer; font-size: 18px; }
+        .btn-round.play { border-color: #3e5a84; }
+        .btn-round.play.active { background: var(--green); border-color: var(--green); }
+        .btn-round.auto-active { border-color: var(--cyan); background: rgba(0, 210, 255, 0.2); }
+
+        .stepper { flex: 1; display: flex; justify-content: space-between; position: relative; padding: 0 10px; }
+        .stepper::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 2px; background: #162a47; z-index: 1; }
+        .step { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .step-dot { width: 14px; height: 14px; border-radius: 50%; background: #162a47; border: 2px solid var(--bg-body); transition: 0.3s; }
+        .step.active .step-dot { background: white; box-shadow: 0 0 8px white; }
+        .step.cooldown .step-dot { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+        .step-label { font-size: 8px; font-weight: bold; color: var(--text-muted); }
+        .step.active .step-label { color: white; }
+
+        /* MANUAL BUTTONS */
+        #manual-controls { display: none; background: #081221; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px dashed var(--cyan); text-align: center;}
+        .manual-grid { display: flex; gap: 10px; margin-top: 10px; }
+        .btn-manual { flex: 1; padding: 12px; border-radius: 6px; border: none; font-weight: bold; color: white; cursor: pointer; font-size: 12px;}
+        .btn-blue { background: var(--cyan); color: #050d1a; }
+        .btn-green { background: var(--green); }
+        .btn-red { background: var(--red); }
+
+        /* TABS & TABLE */
+        .tab-container { display: flex; background: #081221; border-radius: 4px 4px 0 0; align-items: center;}
+        .tab { flex: 1; padding: 12px; text-align: center; font-size: 11px; font-weight: bold; color: var(--text-muted); cursor: pointer; }
+        .tab.active { background: #0b1a31; color: white; border-bottom: 2px solid var(--cyan); }
+        .history-table { width: 100%; background: var(--bg-panel); border-collapse: collapse; font-size: 11px; }
+        .history-table th { text-align: left; padding: 12px 8px; color: var(--text-muted); border-bottom: 1px solid #162a47; }
+        .history-table td { padding: 12px 8px; border-bottom: 1px solid #162a47; }
+
+        /* SETTINGS MODAL */
+        #settings-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 3000; align-items: center; justify-content: center; }
+        .modal-content { background: var(--bg-panel); padding: 25px; border-radius: 12px; width: 90%; max-width: 350px; border: 1px solid var(--border); }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+        .input-group input { width: 100%; padding: 10px; background: #050d1a; border: 1px solid var(--border); color: white; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h1>PLACA CURIOSA</h1>
+            <input type="text" id="api-token" placeholder="Insira seu Token da Deriv">
+            <button onclick="connectDeriv()">CONECTAR CONTA</button>
+        </div>
+    </div>
+
+    <header id="main-header" style="display:none">
+        <div class="logo-container">
+            <span class="logo-main">PLACA CURIOSA</span>
+            <span class="logo-sub">OPERAÇÕES AUTOMATIZADAS</span>
+        </div>
+        <div class="menu-btn" onclick="openSettings()">AJUSTES</div>
+    </header>
+
+    <div id="dashboard-screen">
+        <div class="balance-grid">
+            <div class="bal-box">
+                <div class="bal-label">BALANCE</div>
+                <div class="bal-value" id="val-balance">$ 0.00 USD</div>
+            </div>
+            <div class="bal-box" style="text-align: right;">
+                <div class="bal-label">PROFIT/LOSS</div>
+                <div class="bal-value" id="val-profit" style="color: var(--green);">$ 0.00</div>
+            </div>
+            <div class="trades-row">
+                TRADES <span id="val-wins" style="color:var(--green)">0</span> / <span id="val-losses" style="color:var(--red)">0</span>
+            </div>
+        </div>
+
+        <div class="selector-row">
+            <div class="custom-select">
+                <label>ASSET</label>
+                <div class="select-inner"><span id="txt-asset">Volatility 100</span> <i class="fa-solid fa-arrows-rotate"></i></div>
+                <select id="asset-select" onchange="changeAsset()">
+                    <option value="R_100">Volatility 100 Index</option>
+                    <option value="R_10">Volatility 10 Index</option>
+                    <option value="R_25">Volatility 25 Index</option>
+                    <option value="R_50">Volatility 50 Index</option>
+                </select>
+            </div>
+            <div class="custom-select">
+                <label>ESTRATÉGIA</label>
+                <div class="select-inner"><span id="txt-strat-name">Megatron</span> <i class="fa-solid fa-folder"></i></div>
+                <select id="strategy-select" onchange="updateStratUI()">
+                    <option value="MEGATRON">Megatron (Differ)</option>
+                    <option value="LOUCO">Louco (Rise/Fall)</option>
+                    <option value="HALIKINA">Halikina (Over 1)</option>
+                    <option value="FLASH">Flash (Over 2)</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="btn-video"><i class="fa-solid fa-play"></i></button>
+
+        <div class="digits-panel">
+            <div class="digits-header">
+                <span id="chart-title">Last Digits: <span id="last-digit-text">-</span></span>
+                <span style="color:var(--text-muted); font-weight:normal">25 ticks <i class="fa-solid fa-chevron-down"></i></span>
+            </div>
+            <div class="bar-chart" id="bar-chart"></div>
+            <!-- LISTA DE DÍGITOS ESTILO BALLS -->
+            <div id="recent-ticks-list"></div>
+            
+            <div id="tick-chart-box"><canvas id="tickCanvas"></canvas></div>
+        </div>
+
+        <div class="controls-line">
+            <div class="btn-round" onclick="toggleAutoMode()" id="btn-auto" title="Auto Mode"><i class="fa-solid fa-robot"></i></div>
+            <div class="btn-round play" id="btn-play" onclick="toggleBot()"><i class="fa-solid fa-power-off"></i></div>
+            
+            <div class="stepper">
+                <div class="step active" id="node-analyzing"><div class="step-dot"></div><div class="step-label" id="lbl-analyzing">ANALYZING</div></div>
+                <div class="step" id="node-open"><div class="step-dot"></div><div class="step-label">OPEN</div></div>
+                <div class="step" id="node-closed"><div class="step-dot"></div><div class="step-label">CLOSED</div></div>
+            </div>
+        </div>
+
+        <div id="manual-controls">
+            <div style="font-size: 10px; font-weight: bold; color: var(--cyan);">DISPARO MANUAL</div>
+            <div class="manual-grid" id="m-megatron"><button class="btn-manual btn-blue" onclick="sendManual('MEGATRON')">DIFFERS CONFIG</button></div>
+            <div class="manual-grid" id="m-louco" style="display:none;">
+                <button class="btn-manual btn-green" onclick="sendManual('LOUCO', 'CALL')">RISE</button>
+                <button class="btn-manual btn-red" onclick="sendManual('LOUCO', 'PUT')">FALL</button>
+            </div>
+            <div class="manual-grid" id="m-halikina" style="display:none;"><button class="btn-manual btn-blue" onclick="sendManual('HALIKINA')">OVER 1</button></div>
+            <div class="manual-grid" id="m-flash" style="display:none;"><button class="btn-manual btn-blue" onclick="sendManual('FLASH')">OVER 2</button></div>
+        </div>
+
+        <div class="tab-container">
+            <div class="tab active">TRADER</div>
+            <div style="padding:0 15px; color:var(--text-muted); cursor:pointer" onclick="resetStats()"><i class="fa-solid fa-trash"></i></div>
+        </div>
+        <table class="history-table">
+            <thead><tr><th>TYPE</th><th>FINAL TICK</th><th>PRICE</th><th>RESULT</th></tr></thead>
+            <tbody id="history-body"></tbody>
+        </table>
+    </div>
+
+    <!-- MODAL CONFIG -->
+    <div id="settings-modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:15px; font-size:16px;">Configurações</h3>
+            <div class="input-group"><label>Stake Inicial ($)</label><input type="number" id="inp-stake" value="1.00"></div>
+            <div class="input-group"><label>Stake Recuperação ($)</label><input type="number" id="inp-recovery" value="2.50"></div>
+            <div class="input-group"><label>Stop Loss ($)</label><input type="number" id="inp-loss" value="10.00"></div>
+            <div class="input-group"><label>Take Profit ($)</label><input type="number" id="inp-profit" value="10.00"></div>
+            <div class="input-group"><label>Megatron: Dígito Differ (0-9)</label><input type="number" id="inp-megatron-digit" value="0" min="0" max="9" disabled></div> <!-- Disabled for manual/auto selection -->
+            <button onclick="closeSettings()" style="width:100%; padding:10px; background:var(--cyan); border:none; border-radius:4px; font-weight:bold; margin-top:10px;">SALVAR</button>
+        </div>
+    </div>
+
+    <script>
+        const APP_ID = 1089;
+        let SYMBOL = "R_100", ws = null, token = "";
+        let isRunning = false, isAuto = false, botStatus = "ANALYZING";
+        let isTradeLocked = false, cooldownActive = false;
+        
+        let ticks = [], prices = [];
+        let balance = 0, totalProfit = 0, wins = 0, losses = 0, lossesInRow = 0;
+        let stake = 1.0, recovery = 2.5, stopLoss = 10, takeProfit = 10, megatronDigit = 0;
+        let currentStrat = "MEGATRON";
+        let digitCounts = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0}; // Added to store digit counts
+        let zeroPercentTrades = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0}; // Tracks trades on 0% digits
+        let lastZeroPercentDigits = []; // Stores the digits that were 0% in the last check
+
+        function initBarChart() {
+            const container = document.getElementById('bar-chart');
+            container.innerHTML = '';
+            for(let i=0; i<=9; i++) {
+                // Added onclick event to bar-col for manual selection
+                container.innerHTML += `<div class="bar-col" id="bar-col-${i}" onclick="selectMegatronDiffer(${i})"><span class="bar-pct" id="pct-${i}">0%</span><div class="bar-fill-bg"><div class="bar-fill" id="bar-${i}"></div></div><span class="bar-num">${i}</span></div>`;
+            }
+            updateMegatronDifferHighlight(); // Highlight the initial megatronDigit
+        }
+
+        function connectDeriv() {
+            token = document.getElementById('api-token').value;
+            if(!token) return;
+            ws = new WebSocket(`wss://ws.binaryws.com/websockets/v3?app_id=${APP_ID}`);
+            ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if(data.msg_type === 'authorize') {
+                    document.getElementById('login-screen').style.display = 'none';
+                    document.getElementById('main-header').style.display = 'flex';
+                    document.getElementById('dashboard-screen').style.display = 'block';
+                    initBarChart();
+                    ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+                    
+                    // Request historical ticks immediately
+                    ws.send(JSON.stringify({
+                        ticks_history: SYMBOL,
+                        end: "latest",
+                        count: 25,
+                        subscribe: 1
+                    }));
+                }
+                if(data.msg_type === 'balance') {
+                    balance = data.balance.balance;
+                    document.getElementById('val-balance').innerText = `$ ${balance.toFixed(2)} USD`;
+                }
+                if(data.msg_type === 'tick') processTick(data.tick.quote);
+                if(data.msg_type === 'history') { // Handle historical ticks response
+                    data.history.prices.forEach(p => {
+                        const pVal = Number(p);
+                        const pStr = pVal.toFixed(2);
+                        const lastD = pStr.slice(-1);
+                        ticks.push(Number(lastD));
+                        prices.push(pVal);
+                    });
+                    // Ensure we don't exceed 25 if somehow more are sent
+                    while(ticks.length > 25) ticks.shift();
+                    while(prices.length > 25) prices.shift();
+                    updateCharts(); // Update charts with historical data
+                    updateTickBalls(); // Update tick balls with historical data
+                    // After initial history, subscribe to new ticks
+                    ws.send(JSON.stringify({ ticks: SYMBOL, subscribe: 1 }));
+                }
+                if(data.msg_type === 'buy') addPendingHistory(data.buy.contract_id, data.buy.shortcode, data.buy.buy_price);
+                if(data.msg_type === 'proposal_open_contract' && data.proposal_open_contract.is_sold) handleResult(data.proposal_open_contract);
+            };
+        }
+
+        function processTick(quote) {
+            const pVal = Number(quote);
+            const pStr = pVal.toFixed(2);
+            const lastD = pStr.slice(-1);
+            
+            ticks.push(Number(lastD)); if(ticks.length > 25) ticks.shift();
+            prices.push(pVal); if(prices.length > 25) prices.shift();
+
+            if (!isTradeLocked) {
+                document.getElementById('last-digit-text').innerText = (currentStrat === "LOUCO") ? pStr : lastD;
+                document.getElementById('last-digit-text').style.color = "white";
+            }
+
+            updateCharts();
+            updateTickBalls();
+
+            if(isRunning && isAuto && botStatus === "ANALYZING" && !isTradeLocked && !cooldownActive) {
+                checkBrain();
+            }
+        }
+
+        function updateTickBalls() {
+            const container = document.getElementById('recent-ticks-list');
+            container.innerHTML = '';
+            const last12 = ticks.slice(-12);
+            last12.forEach(d => {
+                const ball = document.createElement('div');
+                ball.className = `tick-ball ${d >= 5 ? 'tick-blue' : 'tick-red'}`;
+                ball.innerText = d;
+                container.appendChild(ball);
+            });
+        }
+
+        function checkBrain() {
+            if(ticks.length < 25) return;
+            let currentStake = (lossesInRow === 0) ? stake : recovery;
+            
+            if(currentStrat === "MEGATRON") {
+                // If in auto mode, find the digit with the lowest percentage and apply new logic
+                if (isAuto) {
+                    let zeroPcntDigits = [];
+                    let lowestPcnt = 101;
+                    let selectedDigit = 0;
+
+                    // First, identify all digits with 0%
+                    for (let digit in digitCounts) {
+                        const pct = Math.round((digitCounts[digit] / 25) * 100);
+                        if (pct === 0) {
+                            zeroPcntDigits.push(Number(digit));
+                        }
+                    }
+
+                    // Check if there's a 0% digit to operate on
+                    if (zeroPcntDigits.length > 0) {
+                        let availableZeroPcntDigits = [];
+                        for (let digit of zeroPcntDigits) {
+                            // Only consider if not operated on twice, or if it was operated on twice and then disappeared from 0% and reappeared
+                            if (zeroPercentTrades[digit] < 2 || !lastZeroPercentDigits.includes(digit)) {
+                                availableZeroPcntDigits.push(digit);
+                            }
+                        }
+
+                        if (availableZeroPcntDigits.length > 0) {
+                            // Prioritize a digit not operated on at all, then one operated once
+                            let targetDigit = -1;
+                            for(let digit of availableZeroPcntDigits) {
+                                if(zeroPercentTrades[digit] === 0) {
+                                    targetDigit = digit;
+                                    break;
+                                }
+                            }
+                            if(targetDigit === -1) { // If all have been operated once, pick any
+                                targetDigit = availableZeroPcntDigits[0];
+                            }
+                            selectedDigit = targetDigit;
+
+                            megatronDigit = selectedDigit;
+                            updateMegatronDifferHighlight(); // Update highlight for auto-selected digit
+                            executeTrade("DIGITDIFF", megatronDigit, currentStake);
+                            zeroPercentTrades[megatronDigit]++; // Increment trade count for this digit
+                            lastZeroPercentDigits = [...zeroPcntDigits]; // Update list of 0% digits for next check
+                            return; // Trade executed, return early
+                        }
+                    } 
+                    
+                    // If no 0% digits, or all 0% digits have been traded twice and are still 0%,
+                    // or if all 0% digits that were traded twice are no longer 0% (in this case, zeroPercentTrades would reset for them later),
+                    // then we look for the general lowest percentage digit to set as default for observation.
+                    // This block will also reset zeroPercentTrades for digits that are no longer 0%.
+                    for (let digit in digitCounts) {
+                        const pct = Math.round((digitCounts[digit] / 25) * 100);
+                        if (pct < lowestPcnt) {
+                            lowestPcnt = pct;
+                            selectedDigit = Number(digit);
+                        }
+                        // Reset trade count for digits that are no longer 0%
+                        if (pct > 0 && zeroPercentTrades[digit] > 0) {
+                             zeroPercentTrades[digit] = 0;
+                        }
+                    }
+                    megatronDigit = selectedDigit; // Set to the overall lowest if no specific 0% trade
+                    updateMegatronDifferHighlight(); // Update highlight for auto-selected digit
+                    lastZeroPercentDigits = [...zeroPcntDigits]; // Update list of 0% digits for next check
+                }
+                
+                // Se o dígito configurado (ex: 0) não saiu nos últimos 5 ticks, entra Differ nele.
+                const last5 = ticks.slice(-5);
+                if(!last5.includes(Number(megatronDigit))) {
+                    executeTrade("DIGITDIFF", megatronDigit, currentStake);
+                }
+            } 
+            else if(currentStrat === "HALIKINA") {
+                const risk = ticks.filter(t => t <= 1).length;
+                if(risk <= 2) executeTrade("DIGITOVER", 1, currentStake);
+            }
+            else if(currentStrat === "FLASH") {
+                const risk = ticks.filter(t => t <= 2).length;
+                if(risk <= 2) executeTrade("DIGITOVER", 2, currentStake);
+            }
+            else if(currentStrat === "LOUCO") {
+                const trend = prices.slice(-5);
+                if(trend[4] > trend[0]) executeTrade("CALL", null, currentStake);
+                else if(trend[4] < trend[0]) executeTrade("PUT", null, currentStake);
+            }
+        }
+
+        function executeTrade(type, barrier, amt) {
+            if(isTradeLocked) return;
+            isTradeLocked = true;
+            botStatus = "OPEN";
+            updateStepper();
+            document.getElementById('last-digit-text').style.color = "var(--text-muted)";
+
+            let params = { amount: amt, basis: "stake", contract_type: type, currency: "USD", duration: 1, duration_unit: "t", symbol: SYMBOL };
+            if(barrier !== null) params.barrier = String(barrier);
+            ws.send(JSON.stringify({ buy: 1, price: amt, parameters: params }));
+            ws.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
+        }
+
+        function handleResult(contract) {
+            if(contract.status !== 'won' && contract.status !== 'lost') return;
+            const p = Number(contract.profit), win = p > 0;
+            totalProfit += p;
+            win ? (wins++, lossesInRow = 0) : (losses++, lossesInRow++);
+
+            const exitD = String(contract.exit_tick_display_value).slice(-1);
+            const el = document.getElementById('last-digit-text');
+            el.innerText = (currentStrat === "LOUCO") ? contract.exit_tick_display_value : exitD;
+            el.style.color = win ? "var(--green)" : "var(--red)";
+            
+            botStatus = win ? "WIN" : "LOSS";
+            updateStepper();
+            updateHistoryRow(contract.contract_id, exitD, p);
+            updateUI();
+
+            cooldownActive = true;
+            setTimeout(() => {
+                isTradeLocked = false; cooldownActive = false;
+                if(totalProfit >= takeProfit || totalProfit <= -stopLoss) {
+                    if(isRunning) toggleBot(); alert("Alvo Atingido!");
+                } else if(isRunning) { botStatus = "ANALYZING"; updateStepper(); }
+            }, 1500);
+        }
+
+        // --- HISTÓRICO E GRÁFICOS ---
+        function addPendingHistory(id, shortcode, price) {
+            const body = document.getElementById('history-body');
+            const type = (shortcode || "TRADE").split('_')[0];
+            const row = `<tr id="c-${id}"><td>${type}</td><td class="f-tick">...</td><td>$${Number(price).toFixed(2)}</td><td class="f-profit">ENVIADO</td></tr>`;
+            body.insertAdjacentHTML('afterbegin', row);
+        }
+
+        function updateHistoryRow(id, tick, profit) {
+            const row = document.getElementById(`c-${id}`); if(!row) return;
+            row.querySelector('.f-tick').innerText = tick;
+            const pTd = row.querySelector('.f-profit');
+            pTd.innerText = profit.toFixed(2);
+            pTd.style.color = profit > 0 ? "var(--green)" : "var(--red)";
+        }
+
+        function updateCharts() {
+            if(currentStrat === "LOUCO") {
+                drawWormChart();
+            } else {
+                digitCounts = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0}; // Reset counts
+                ticks.forEach(t => digitCounts[t]++);
+                const max = Math.max(...Object.values(digitCounts));
+                for(let i=0; i<=9; i++) {
+                    const pct = Math.round((digitCounts[i]/25)*100);
+                    const bar = document.getElementById(`bar-${i}`);
+                    const pctTxt = document.getElementById(`pct-${i}`);
+                    if(bar && pctTxt) {
+                        bar.style.height = pct*2 + '%';
+                        pctTxt.innerText = pct + '%';
+                        bar.className = 'bar-fill' + (pct===0 ? ' zero' : (digitCounts[i]===max && max>0 ? ' high' : ''));
+                    }
+                }
+                updateMegatronDifferHighlight(); // Ensure highlight is updated after chart redraw
+            }
+        }
+
+        function drawWormChart() {
+            const canvas = document.getElementById('tickCanvas'); if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+            if(prices.length < 2) return;
+            const min = Math.min(...prices), max = Math.max(...prices), range = max - min || 1;
+            ctx.beginPath(); ctx.strokeStyle = "#00d2ff"; ctx.lineWidth = 2;
+            prices.forEach((p, i) => {
+                const x = (i / (prices.length - 1)) * canvas.width;
+                const y = canvas.height - ((p - min) / range) * canvas.height;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        function updateUI() {
+            const pEl = document.getElementById('val-profit');
+            pEl.innerText = `$ ${totalProfit.toFixed(2)}`;
+            pEl.style.color = totalProfit >= 0 ? "var(--green)" : "var(--red)";
+            document.getElementById('val-wins').innerText = wins;
+            document.getElementById('val-losses').innerText = losses;
+        }
+
+        function updateStepper() {
+            const steps = ['node-analyzing', 'node-open', 'node-closed'];
+            steps.forEach(s => document.getElementById(s).classList.remove('active', 'cooldown'));
+            const lbl = document.getElementById('lbl-analyzing');
+            lbl.innerText = isRunning ? (cooldownActive ? "ESPERANDO" : "ANALYZING") : "STOPPED";
+            if(botStatus === "ANALYZING") document.getElementById('node-analyzing').classList.add('active');
+            else if(botStatus === "OPEN") document.getElementById('node-open').classList.add('active');
+            else if(botStatus === "WIN" || botStatus === "LOSS") {
+                document.getElementById('node-closed').classList.add('active');
+                document.getElementById('node-analyzing').classList.add('cooldown');
+            }
+        }
+
+        function updateStratUI() {
+            currentStrat = document.getElementById('strategy-select').value;
+            document.getElementById('txt-strat-name').innerText = currentStrat;
+            document.getElementById('bar-chart').style.display = currentStrat === "LOUCO" ? "none" : "flex";
+            document.getElementById('tick-chart-box').style.display = currentStrat === "LOUCO" ? "block" : "none";
+            ['m-megatron', 'm-louco', 'm-halikina', 'm-flash'].forEach(id => document.getElementById(id).style.display = 'none');
+            document.getElementById('m-' + currentStrat.toLowerCase()).style.display = 'flex';
+
+            // Enable/disable input-megatron-digit based on strategy and auto mode
+            document.getElementById('inp-megatron-digit').disabled = (currentStrat === "MEGATRON" && isAuto);
+            updateMegatronDifferHighlight(); // Update highlight based on new strategy
+        }
+
+        function toggleBot() { 
+            isRunning = !isRunning; 
+            document.getElementById('btn-play').classList.toggle('active'); 
+            botStatus = isRunning ? "ANALYZING" : "STOPPED"; 
+            if(!isRunning) {
+                isTradeLocked = false;
+                // Reset zero percent trades when bot stops
+                zeroPercentTrades = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0};
+                lastZeroPercentDigits = [];
+            }
+            updateStepper(); 
+            checkManualVisibility(); 
+            // Update megatron digit input state
+            document.getElementById('inp-megatron-digit').disabled = (currentStrat === "MEGATRON" && isAuto);
+            updateMegatronDifferHighlight(); // Update highlight
+        }
+        function toggleAutoMode() { 
+            isAuto = !isAuto; 
+            document.getElementById('btn-auto').classList.toggle('auto-active'); 
+            checkManualVisibility(); 
+            // Update megatron digit input state
+            document.getElementById('inp-megatron-digit').disabled = (currentStrat === "MEGATRON" && isAuto);
+            updateMegatronDifferHighlight(); // Update highlight
+        }
+        function checkManualVisibility() { 
+            // Manual controls are visible if bot is running AND NOT in auto mode
+            document.getElementById('manual-controls').style.display = (isRunning && !isAuto) ? 'block' : 'none'; 
+            // If manual controls are visible and Megatron, enable megatron digit input
+            document.getElementById('inp-megatron-digit').disabled = !(document.getElementById('manual-controls').style.display === 'block' && currentStrat === "MEGATRON");
+            updateMegatronDifferHighlight(); // Update highlight
+        }
+        function sendManual(strat, dir = null) { 
+            if(botStatus !== "ANALYZING" || isTradeLocked) return; 
+            let amt = (lossesInRow === 0) ? stake : recovery; 
+            if(strat === "MEGATRON") {
+                executeTrade("DIGITDIFF", megatronDigit, amt);
+            } else if(strat === "LOUCO") {
+                executeTrade(dir, null, amt); 
+            } else if(strat === "HALIKINA") {
+                executeTrade("DIGITOVER", 1, amt); 
+            } else if(strat === "FLASH") {
+                executeTrade("DIGITOVER", 2, amt); 
+            }
+        }
+        function changeAsset() { 
+            SYMBOL = document.getElementById('asset-select').value; 
+            ticks = []; prices = []; 
+            if(ws && ws.readyState === 1) { 
+                ws.send(JSON.stringify({forget_all: "ticks"})); 
+                // Request historical ticks for the new asset
+                ws.send(JSON.stringify({
+                    ticks_history: SYMBOL,
+                    end: "latest",
+                    count: 25,
+                    subscribe: 1 // Keep subscription for new ticks
+                }));
+            } 
+        }
+        function openSettings() { 
+            document.getElementById('inp-stake').value = stake;
+            document.getElementById('inp-recovery').value = recovery;
+            document.getElementById('inp-loss').value = stopLoss;
+            document.getElementById('inp-profit').value = takeProfit;
+            document.getElementById('inp-megatron-digit').value = megatronDigit; // Display current megatronDigit
+            document.getElementById('settings-modal').style.display = 'flex'; 
+        }
+        function closeSettings() { 
+            stake = Number(document.getElementById('inp-stake').value);
+            recovery = Number(document.getElementById('inp-recovery').value);
+            stopLoss = Number(document.getElementById('inp-loss').value);
+            takeProfit = Number(document.getElementById('inp-profit').value);
+            // megatronDigit is now set via manual selection or auto logic, not directly from this input
+            document.getElementById('settings-modal').style.display = 'none'; 
+        }
+        function resetStats() { 
+            totalProfit = 0; 
+            wins = 0; 
+            losses = 0; 
+            lossesInRow = 0; // Reset losses in row too
+            document.getElementById('history-body').innerHTML = ''; 
+            updateUI(); 
+        }
+
+        // --- NEW FUNCTIONS FOR MEGATRON DIGIT SELECTION ---
+
+        function selectMegatronDiffer(digit) {
+            // Allow manual selection if Megatron is the current strategy and bot is not in auto mode
+            if (currentStrat === "MEGATRON" && !isAuto) { 
+                megatronDigit = digit;
+                updateMegatronDifferHighlight();
+                // Optionally update the disabled input in settings modal if it's open
+                if (document.getElementById('settings-modal').style.display === 'flex') {
+                    document.getElementById('inp-megatron-digit').value = megatronDigit;
+                }
+            }
+        }
+
+        function updateMegatronDifferHighlight() {
+            for(let i=0; i<=9; i++) {
+                const barCol = document.getElementById(`bar-col-${i}`);
+                if (barCol) {
+                    barCol.classList.remove('selected-differ');
+                }
+            }
+            if (currentStrat === "MEGATRON") {
+                const selectedBarCol = document.getElementById(`bar-col-${megatronDigit}`);
+                if (selectedBarCol) {
+                    selectedBarCol.classList.add('selected-differ');
+                }
+            }
+        }
+
+        // Initialize UI on load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateStratUI(); // Set initial strategy UI
+            updateMegatronDifferHighlight(); // Ensure highlight is set for initial megatronDigit
+        });
+    </script>
+</body>
+</html>
