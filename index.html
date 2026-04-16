@@ -241,6 +241,7 @@
         let digitCounts = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0}; // Added to store digit counts
         let zeroPercentTrades = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0}; // Tracks trades on 0% digits
         let lastZeroPercentDigits = []; // Stores the digits that were 0% in the last check
+        let lastReceivedTick = null; // Store the last received tick value
 
         function initBarChart() {
             const container = document.getElementById('bar-chart');
@@ -280,7 +281,7 @@
                 }
                 // Modified to handle both 'tick' and 'history' responses without showing duplicates
                 if(data.msg_type === 'tick') {
-                    processSingleTick(data.tick.quote);
+                    processSingleTick(data.tick.quote, data.tick.epoch);
                 }
                 if(data.msg_type === 'history') { // Handle historical ticks response
                     // Clear existing ticks before adding historical ones to prevent accumulation
@@ -303,13 +304,34 @@
                     // depending on Deriv's API specific implementation, but keeping it ensures new ticks are received.
                     // ws.send(JSON.stringify({ ticks: SYMBOL, subscribe: 1 })); 
                 }
-                if(data.msg_type === 'buy') addPendingHistory(data.buy.contract_id, data.buy.shortcode, data.buy.buy_price);
-                if(data.msg_type === 'proposal_open_contract' && data.proposal_open_contract.is_sold) handleResult(data.proposal_open_contract);
+                // Check for 'proposal_open_contract' and update result based on the next tick after contract is sent
+                if(data.msg_type === 'proposal_open_contract') {
+                    if (data.proposal_open_contract.is_sold) {
+                        // The contract is sold, which means it's closed.
+                        // We need the NEXT tick's digit after the contract was sent to determine the result.
+                        // The `handleResult` function now expects the `exit_tick` from the proposal_open_contract.
+                        // This `exit_tick` is the digit that closed the contract.
+                        handleResult(data.proposal_open_contract);
+                    } else if (data.proposal_open_contract.contract_id && data.proposal_open_contract.shortcode) {
+                        // This is the initial buy confirmation for an open contract
+                        // We store the contract details to match with its eventual closing tick
+                        addPendingHistory(data.proposal_open_contract.contract_id, data.proposal_open_contract.shortcode, data.proposal_open_contract.buy_price);
+                    }
+                }
+                // The 'buy' message is for the initial buy request, not the contract closure.
+                // It confirms the contract was opened.
+                // if(data.msg_type === 'buy') addPendingHistory(data.buy.contract_id, data.buy.shortcode, data.buy.buy_price);
             };
         }
 
         // Renamed from processTick to processSingleTick to differentiate from historical processing
-        function processSingleTick(quote) {
+        function processSingleTick(quote, epoch) {
+            // Check if this tick is newer than the last one to avoid processing duplicates
+            // if (lastReceivedTick && epoch <= lastReceivedTick.epoch) {
+            //     return; 
+            // }
+            // lastReceivedTick = {quote, epoch}; // Update last received tick
+
             const pVal = Number(quote);
             const pStr = pVal.toFixed(2);
             const lastD = pStr.slice(-1);
@@ -317,11 +339,9 @@
             ticks.push(Number(lastD)); if(ticks.length > 25) ticks.shift();
             prices.push(pVal); if(prices.length > 25) prices.shift();
 
-            if (!isTradeLocked) {
-                // Ensure only the single last digit (or price for LOUCO) is displayed
-                document.getElementById('last-digit-text').innerText = (currentStrat === "LOUCO") ? pStr : lastD;
-                document.getElementById('last-digit-text').style.color = "white";
-            }
+            // Always display the last digit
+            document.getElementById('last-digit-text').innerText = (currentStrat === "LOUCO") ? pStr : lastD;
+            document.getElementById('last-digit-text').style.color = "white"; // Keep color white as default for ongoing ticks
 
             updateCharts();
             updateTickBalls();
@@ -362,31 +382,23 @@
                         }
                     }
 
-                    // Check if there's a 0% digit to operate on
+                    // *** NEW LOGIC: Enter immediately if a digit is 0% and conditions allow ***
                     if (zeroPcntDigits.length > 0) {
-                        let availableZeroPcntDigits = [];
+                        let operableZeroPcntDigit = -1;
+
+                        // Check for digits that have 0% now and haven't been traded twice YET
                         for (let digit of zeroPcntDigits) {
-                            // Only consider if not operated on twice, or if it was operated on twice and then disappeared from 0% and reappeared
-                            if (zeroPercentTrades[digit] < 2 || !lastZeroPercentDigits.includes(digit)) {
-                                availableZeroPcntDigits.push(digit);
+                            // If this digit was not 0% in the last check (meaning it just became 0%)
+                            // OR if it was 0% last time and we still have trades left for it.
+                            if ((!lastZeroPercentDigits.includes(digit) && zeroPercentTrades[digit] < 2) || 
+                                (lastZeroPercentDigits.includes(digit) && zeroPercentTrades[digit] < 2)) {
+                                operableZeroPcntDigit = digit;
+                                break; // Found an operable digit, prioritize this one
                             }
                         }
 
-                        if (availableZeroPcntDigits.length > 0) {
-                            // Prioritize a digit not operated on at all, then one operated once
-                            let targetDigit = -1;
-                            for(let digit of availableZeroPcntDigits) {
-                                if(zeroPercentTrades[digit] === 0) {
-                                    targetDigit = digit;
-                                    break;
-                                }
-                            }
-                            if(targetDigit === -1) { // If all have been operated once, pick any
-                                targetDigit = availableZeroPcntDigits[0];
-                            }
-                            selectedDigit = targetDigit;
-
-                            megatronDigit = selectedDigit;
+                        if (operableZeroPcntDigit !== -1) {
+                            megatronDigit = operableZeroPcntDigit;
                             updateMegatronDifferHighlight(); // Update highlight for auto-selected digit
                             executeTrade("DIGITDIFF", megatronDigit, currentStake);
                             zeroPercentTrades[megatronDigit]++; // Increment trade count for this digit
@@ -395,10 +407,9 @@
                         }
                     } 
                     
-                    // If no 0% digits, or all 0% digits have been traded twice and are still 0%,
-                    // or if all 0% digits that were traded twice are no longer 0% (in this case, zeroPercentTrades would reset for them later),
-                    // then we look for the general lowest percentage digit to set as default for observation.
-                    // This block will also reset zeroPercentTrades for digits that are no longer 0%.
+                    // If no *newly* 0% digit to trade on, or all 0% digits have hit their trade limit,
+                    // then we just update `megatronDigit` to the overall lowest percentage for observation.
+                    // This block also resets zeroPercentTrades for digits that are no longer 0%.
                     for (let digit in digitCounts) {
                         const pct = Math.round((digitCounts[digit] / 25) * 100);
                         if (pct < lowestPcnt) {
@@ -416,8 +427,9 @@
                 }
                 
                 // Se o dígito configurado (ex: 0) não saiu nos últimos 5 ticks, entra Differ nele.
+                // This condition applies after the auto-mode-specific logic.
                 const last5 = ticks.slice(-5);
-                if(!last5.includes(Number(megatronDigit))) {
+                if(!last5.includes(Number(megatronDigit)) && !(isAuto && zeroPcntDigits.length > 0)) { // Prevent double-trading if already traded on 0%
                     executeTrade("DIGITDIFF", megatronDigit, currentStake);
                 }
             } 
@@ -441,22 +453,28 @@
             isTradeLocked = true;
             botStatus = "OPEN";
             updateStepper();
-            document.getElementById('last-digit-text').style.color = "var(--text-muted)";
+            // Do not change last-digit-text color here, it should keep showing current tick
+            // document.getElementById('last-digit-text').style.color = "var(--text-muted)";
 
             let params = { amount: amt, basis: "stake", contract_type: type, currency: "USD", duration: 1, duration_unit: "t", symbol: SYMBOL };
             if(barrier !== null) params.barrier = String(barrier);
             ws.send(JSON.stringify({ buy: 1, price: amt, parameters: params }));
+            // We need to subscribe to proposal_open_contract to get the contract result
+            // The ticks subscription handles continuous tick updates
             ws.send(JSON.stringify({ proposal_open_contract: 1, subscribe: 1 }));
         }
 
         function handleResult(contract) {
-            if(contract.status !== 'won' && contract.status !== 'lost') return;
+            if(!contract.contract_id) return; // Ensure it's a valid contract
+
             const p = Number(contract.profit), win = p > 0;
             totalProfit += p;
             win ? (wins++, lossesInRow = 0) : (losses++, lossesInRow++);
 
+            // The exit_tick_display_value is the value of the tick that closed the contract
             const exitD = String(contract.exit_tick_display_value).slice(-1);
             const el = document.getElementById('last-digit-text');
+            // This is the result display, so it should briefly flash the outcome
             el.innerText = (currentStrat === "LOUCO") ? contract.exit_tick_display_value : exitD;
             el.style.color = win ? "var(--green)" : "var(--red)";
             
@@ -468,6 +486,10 @@
             cooldownActive = true;
             setTimeout(() => {
                 isTradeLocked = false; cooldownActive = false;
+                // Reset last-digit-text color to white after cooldown, if bot is running
+                if(isRunning) { // Only reset color if bot is still running
+                    el.style.color = "white"; 
+                }
                 if(totalProfit >= takeProfit || totalProfit <= -stopLoss) {
                     if(isRunning) toggleBot(); alert("Alvo Atingido!");
                 } else if(isRunning) { botStatus = "ANALYZING"; updateStepper(); }
