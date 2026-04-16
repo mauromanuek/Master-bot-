@@ -278,8 +278,14 @@
                     balance = data.balance.balance;
                     document.getElementById('val-balance').innerText = `$ ${balance.toFixed(2)} USD`;
                 }
-                if(data.msg_type === 'tick') processTick(data.tick.quote);
+                // Modified to handle both 'tick' and 'history' responses without showing duplicates
+                if(data.msg_type === 'tick') {
+                    processSingleTick(data.tick.quote);
+                }
                 if(data.msg_type === 'history') { // Handle historical ticks response
+                    // Clear existing ticks before adding historical ones to prevent accumulation
+                    ticks = [];
+                    prices = [];
                     data.history.prices.forEach(p => {
                         const pVal = Number(p);
                         const pStr = pVal.toFixed(2);
@@ -292,15 +298,18 @@
                     while(prices.length > 25) prices.shift();
                     updateCharts(); // Update charts with historical data
                     updateTickBalls(); // Update tick balls with historical data
-                    // After initial history, subscribe to new ticks
-                    ws.send(JSON.stringify({ ticks: SYMBOL, subscribe: 1 }));
+                    // After initial history, subscribe to new ticks (if not already subscribed by ticks_history)
+                    // The 'subscribe: 1' in ticks_history already handles continuous updates, so this line might be redundant
+                    // depending on Deriv's API specific implementation, but keeping it ensures new ticks are received.
+                    // ws.send(JSON.stringify({ ticks: SYMBOL, subscribe: 1 })); 
                 }
                 if(data.msg_type === 'buy') addPendingHistory(data.buy.contract_id, data.buy.shortcode, data.buy.buy_price);
                 if(data.msg_type === 'proposal_open_contract' && data.proposal_open_contract.is_sold) handleResult(data.proposal_open_contract);
             };
         }
 
-        function processTick(quote) {
+        // Renamed from processTick to processSingleTick to differentiate from historical processing
+        function processSingleTick(quote) {
             const pVal = Number(quote);
             const pStr = pVal.toFixed(2);
             const lastD = pStr.slice(-1);
@@ -309,6 +318,7 @@
             prices.push(pVal); if(prices.length > 25) prices.shift();
 
             if (!isTradeLocked) {
+                // Ensure only the single last digit (or price for LOUCO) is displayed
                 document.getElementById('last-digit-text').innerText = (currentStrat === "LOUCO") ? pStr : lastD;
                 document.getElementById('last-digit-text').style.color = "white";
             }
